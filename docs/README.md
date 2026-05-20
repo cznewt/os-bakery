@@ -13,8 +13,9 @@ Welcome. This is the source-of-truth documentation for the **os-bakery** applica
 7. [Deployment](deployment.md) — production runbook (Postgres, Redis, S3, workers).
 8. [Operations](operations.md) — admin tasks, sync commands, common failures.
 9. [API reference](api.md) — REST endpoints.
-10. [Roadmap](roadmap.md) — what's done, what's next.
-11. [Contributing](contributing.md) — local dev, conventions, code style.
+10. [CI](ci.md) — GitHub Actions workflows: lint/tests, container builds, scheduled image refresh.
+11. [Roadmap](roadmap.md) — what's done, what's next.
+12. [Contributing](contributing.md) — local dev, conventions, code style.
 
 ## Glossary
 

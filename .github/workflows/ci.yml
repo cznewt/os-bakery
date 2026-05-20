@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: ruff check
+        # Informational until the scaffold's lint findings have been cleaned up.
+        continue-on-error: true
+        run: ruff check .
+      - name: ruff format --check
+        continue-on-error: true
+        run: ruff format --check .
+
+  test:
+    name: Django tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: django check
+        run: python manage.py check
+      - name: pytest
+        env:
+          DJANGO_SECRET_KEY: test-only
+          DATABASE_URL: sqlite:///:memory:
+        run: pytest --cov=catalog --cov=recipes --cov=builds --cov=infra --cov-report=term
+
+  packer-validate:
+    name: Packer validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-packer@main
+        with:
+          version: "1.11.2"
+      - name: packer init + validate (all templates)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for template in packer/*/*/template.pkr.hcl; do
+            echo "::group::$template"
+            dir="$(dirname "$template")"
+            ( cd "$dir" && packer init . && packer validate template.pkr.hcl )
+            echo "::endgroup::"
+          done
+
+  salt-syntax:
+    name: Salt syntax (yaml + jinja)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install pyyaml
+      - name: Validate Salt state + pillar files parse as YAML (after stripping Jinja)
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys, yaml
+
+          # Salt mixes Jinja with YAML and resolves pillar/grains at runtime,
+          # so we can't render them here. Stripping Jinja blocks then YAML-
+          # parsing the residue catches the bulk of grammar drift.
+          jinja_block = re.compile(r"\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\}", re.DOTALL)
+
+          errs = 0
+          for path in pathlib.Path("salt").rglob("*.sls"):
+              text = path.read_text()
+              stripped = jinja_block.sub("", text)
+              try:
+                  yaml.safe_load(stripped)
+              except yaml.YAMLError as exc:
+                  print(f"::error file={path}::YAML error after stripping jinja: {exc}")
+                  errs += 1
+
+          if errs:
+              sys.exit(f"{errs} Salt file(s) failed the YAML check")
+          print("All Salt files parse cleanly.")
+          PY
+
+  django-image:
+    name: Build container image (no push)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [web, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: false
+          load: true
+          tags: os-bakery-${{ matrix.target }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max

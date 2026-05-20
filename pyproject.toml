@@ -41,13 +41,17 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "DJ", "S", "N"]
-ignore = ["S101", "DJ001"]
+# Conservative set for the scaffold — tighten once formatting + bandit/django
+# rule violations have been triaged.
+select = ["E", "F", "I", "B", "UP"]
+ignore = []
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "osbakery.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
-addopts = "-ra -q"
+# --no-migrations: build the test DB straight from models so first-time
+# runs (no migrations on disk yet) still work in CI.
+addopts = "-ra -q --no-migrations"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,0 +1,142 @@
+name: Refresh OS base images
+
+# Builds OS base images via Packer on a schedule (and on demand).
+#
+# Hosted runners are tight on disk (~14 GB free) and slow at xz, so this
+# defaults to the smaller Raspberry Pi OS templates only. For Batocera /
+# Ubuntu / large variants, attach a self-hosted runner with the label
+# `bakery-build` and trigger via workflow_dispatch with the matching target.
+
+on:
+  schedule:
+    # Sundays at 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Single template to refresh (e.g. raspios/rpi5). Leave empty for the default matrix."
+        required: false
+        type: string
+      runner:
+        description: "Runner label"
+        required: false
+        type: choice
+        default: ubuntu-latest
+        options:
+          - ubuntu-latest
+          - bakery-build
+
+env:
+  PACKER_VERSION: "1.11.2"
+  CACHE_ROOT: ${{ github.workspace }}/_cache
+  WORK_ROOT: ${{ github.workspace }}/_work
+
+jobs:
+  matrix:
+    name: Resolve matrix
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.set.outputs.targets }}
+      runner: ${{ steps.set.outputs.runner }}
+    steps:
+      - id: set
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.target }}" ]; then
+            echo "targets=[\"${{ inputs.target }}\"]" >> "$GITHUB_OUTPUT"
+          else
+            # Default schedule: only the lighter-weight RPi targets.
+            cat <<'EOF' >> "$GITHUB_OUTPUT"
+          targets=["raspios/rpi5","raspios/rpi4","raspios/rpi-zero2w"]
+          EOF
+          fi
+          echo "runner=${{ inputs.runner || 'ubuntu-latest' }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: matrix
+    runs-on: ${{ needs.matrix.outputs.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.matrix.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space (hosted runner only)
+        if: needs.matrix.outputs.runner == 'ubuntu-latest'
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          sudo apt-get -y autoremove --purge
+          sudo apt-get clean
+          df -h /
+
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              xz-utils gzip unzip qemu-utils curl ca-certificates
+
+      - uses: hashicorp/setup-packer@main
+        with:
+          version: ${{ env.PACKER_VERSION }}
+
+      - name: Resolve template path
+        id: tpl
+        run: |
+          set -euo pipefail
+          dir="packer/${{ matrix.target }}"
+          tpl="$dir/template.pkr.hcl"
+          [ -f "$tpl" ] || { echo "::error::template not found: $tpl"; exit 1; }
+          echo "dir=$dir"     >> "$GITHUB_OUTPUT"
+          echo "tpl=$tpl"     >> "$GITHUB_OUTPUT"
+          mkdir -p "$CACHE_ROOT" "$WORK_ROOT"
+
+      - name: packer init + validate
+        working-directory: ${{ steps.tpl.outputs.dir }}
+        run: |
+          packer init .
+          packer validate \
+            -var "cache_root=${CACHE_ROOT}" \
+            -var "work_root=${WORK_ROOT}" \
+            template.pkr.hcl
+
+      - name: packer build
+        working-directory: ${{ steps.tpl.outputs.dir }}
+        run: |
+          set -euo pipefail
+          packer build \
+            -var "cache_root=${CACHE_ROOT}" \
+            -var "work_root=${WORK_ROOT}" \
+            template.pkr.hcl
+
+      - name: Show manifest
+        run: |
+          find "$CACHE_ROOT" -name manifest.json -print -exec cat {} +
+
+      - name: Sanitize target name for artifact
+        id: name
+        run: echo "safe=$(echo '${{ matrix.target }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ steps.name.outputs.safe }}
+          path: ${{ env.CACHE_ROOT }}/${{ matrix.target }}/manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      # Image upload is opt-in via the env (artifacts >2 GB don't survive
+      # GitHub-hosted retention well; usually you push these to S3/MinIO).
+      - name: Upload image (if small enough)
+        if: env.UPLOAD_IMAGES == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ steps.name.outputs.safe }}
+          path: ${{ env.CACHE_ROOT }}/${{ matrix.target }}/*.img.xz
+          if-no-files-found: warn
+          retention-days: 7
