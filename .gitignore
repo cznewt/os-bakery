@@ -1,0 +1,50 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+local_settings.py
+media/
+staticfiles/
+
+# Build artifacts and intermediates
+storage/artifacts/
+storage/work/
+storage/cache/
+*.img
+*.img.xz
+*.img.gz
+*.iso
+*.qcow2
+
+# Packer
+packer/**/output-*/
+packer/**/*.box
+packer/**/manifest.json
+packer/**/packer_cache/
+packer/**/.packer.d/
+crash.log
+
+# Salt
+salt/cache/
+salt/run/
+salt/.pki/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml

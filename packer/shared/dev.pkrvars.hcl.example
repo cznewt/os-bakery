@@ -1,0 +1,15 @@
+// Copy to dev.pkrvars.hcl and adjust to your machine.
+
+cache_root = "./storage/cache"
+work_root  = "./storage/work/packer"
+
+publish_manifest = true
+
+core_salt_states = ["base.hardening", "base.users"]
+
+core_salt_pillar = {
+  base = {
+    timezone = "Europe/Prague"
+    locale   = "en_US.UTF-8"
+  }
+}
