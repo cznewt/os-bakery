@@ -6,11 +6,14 @@ these views compose data from `catalog` + `recipes` + `builds`.
 
 from __future__ import annotations
 
+from django.contrib import messages
 from django.db.models import Count, Prefetch
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
 
+from builds.models import BuildRequest
 from catalog.models import HardwareTarget, OperatingSystem, OSRelease, UpstreamImage
+from recipes.models import Recipe
 
 
 # simple-icons.org serves a public, versioned CDN of brand SVGs. Each entry
@@ -127,6 +130,108 @@ def home(request: HttpRequest) -> HttpResponse:
     return render(request, "home.html", context)
 
 
+def _categorize_target(slug: str) -> str:
+    if slug.startswith("rpi"):
+        return "rpi"
+    if slug.startswith("vm-"):
+        return "vm"
+    if slug == "pc-amd64":
+        return "pc"
+    if slug in {
+        "generic-arm64",
+        "beaglebone-black", "beaglebone-blue",
+        "jetson-nano", "jetson-xavier-nx", "jetson-orin-nano",
+    }:
+        return "sbc"
+    return "handheld"
+
+
+CATEGORY_ORDER: list[tuple[str, str, str]] = [
+    # (key, label, accent)
+    ("rpi", "Raspberry Pi", "#c51a4a"),
+    ("pc", "PC / Laptop", "#0ea5e9"),
+    ("sbc", "ARM SBC / Embedded", "#76b900"),
+    ("handheld", "Retro handheld", "#8b5cf6"),
+    ("vm", "Virtual machine", "#f59e0b"),
+]
+
+
+def devices(request: HttpRequest) -> HttpResponse:
+    """Every HardwareTarget, grouped by category, with the OSes that support each."""
+
+    targets = list(
+        HardwareTarget.objects.select_related("architecture")
+        .order_by("architecture__slug", "slug")
+    )
+
+    # One pass: collect per-target image count + the set of OSes that
+    # actually have an image for that target.
+    image_counts: dict[int, int] = {}
+    target_oses: dict[int, set[tuple[str, str]]] = {}
+    for img in (
+        UpstreamImage.objects
+        .select_related("release__operating_system")
+        .only(
+            "hardware_target_id",
+            "release__operating_system__slug",
+            "release__operating_system__name",
+        )
+    ):
+        image_counts[img.hardware_target_id] = (
+            image_counts.get(img.hardware_target_id, 0) + 1
+        )
+        target_oses.setdefault(img.hardware_target_id, set()).add(
+            (img.release.operating_system.slug,
+             img.release.operating_system.name)
+        )
+
+    cards_by_category: dict[str, list[dict]] = {}
+    for t in targets:
+        oses_for_target = sorted(target_oses.get(t.id, set()))
+        cards_by_category.setdefault(_categorize_target(t.slug), []).append({
+            "slug": t.slug,
+            "name": t.name,
+            "arch": t.architecture.slug,
+            "boot": t.boot_method,
+            "soc": t.soc,
+            "notes": t.notes,
+            "is_active": t.is_active,
+            "n_images": image_counts.get(t.id, 0),
+            "oses": [
+                {
+                    "slug": slug,
+                    "name": name,
+                    "svg": OS_LOGOS.get(slug, {}).get("svg"),
+                    "letter": OS_LOGOS.get(slug, {}).get(
+                        "fallback_letter", name[:1].upper()
+                    ),
+                    "accent": OS_LOGOS.get(slug, {}).get("accent", "#6b7280"),
+                }
+                for slug, name in oses_for_target
+            ],
+        })
+
+    sections = []
+    for key, label, accent in CATEGORY_ORDER:
+        cards = cards_by_category.get(key, [])
+        if not cards:
+            continue
+        sections.append({
+            "key": key,
+            "label": label,
+            "accent": accent,
+            "cards": cards,
+            "n_cards": len(cards),
+            "n_images": sum(c["n_images"] for c in cards),
+        })
+
+    return render(request, "devices.html", {
+        "sections": sections,
+        "total_targets": len(targets),
+        "total_images": sum(image_counts.values()),
+    })
+
+
 def base_images(request: HttpRequest) -> HttpResponse:
     """Every (OS, release, target, variant) upstream-image row, grouped by OS.
 
@@ -180,3 +285,156 @@ def base_images(request: HttpRequest) -> HttpResponse:
         "total_rows": sum(len(g["rows"]) for g in groups.values()),
     }
     return render(request, "base_images.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Bake — role-template recipe picker + per-recipe form
+# ---------------------------------------------------------------------------
+
+
+def _os_logo(slug: str) -> dict[str, str]:
+    """Bundle of {svg, letter, accent} for a given OS slug — defaults for unknown."""
+    entry = OS_LOGOS.get(slug, {})
+    return {
+        "svg": entry.get("svg"),
+        "letter": entry.get("fallback_letter", slug[:1].upper()),
+        "accent": entry.get("accent", "#6b7280"),
+    }
+
+
+def bake_index(request: HttpRequest) -> HttpResponse:
+    """Recipe-picker page — role templates as cards."""
+    os_filter = request.GET.get("os") or ""
+
+    qs = (
+        Recipe.objects.filter(status=Recipe.Status.ACTIVE)
+        .select_related("operating_system")
+        .prefetch_related("supported_hardware")
+        .order_by("operating_system__name", "name")
+    )
+    if os_filter:
+        qs = qs.filter(operating_system__slug=os_filter)
+
+    cards = []
+    for r in qs:
+        logo = _os_logo(r.operating_system.slug)
+        cards.append({
+            "slug": r.slug,
+            "name": r.name,
+            "summary": r.summary,
+            "os_slug": r.operating_system.slug,
+            "os_name": r.operating_system.name,
+            "os_kind": r.operating_system.get_kind_display(),
+            "logo_svg": logo["svg"],
+            "logo_letter": logo["letter"],
+            "accent": logo["accent"],
+            "hardware": [
+                {"slug": h.slug, "name": h.name}
+                for h in r.supported_hardware.all()
+            ],
+        })
+
+    return render(request, "bake_index.html", {
+        "cards": cards,
+        "all_operating_systems": OperatingSystem.objects.filter(
+            is_active=True, recipes__status=Recipe.Status.ACTIVE,
+        ).distinct().order_by("name"),
+        "selected_os": os_filter,
+    })
+
+
+def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
+    """Per-recipe form: pick a hardware target + fill out options + bake."""
+    recipe = get_object_or_404(
+        Recipe.objects.select_related("operating_system", "pinned_release")
+        .prefetch_related("supported_hardware", "options"),
+        slug=slug,
+    )
+    version = (recipe.versions.filter(is_current=True).first()
+               or recipe.versions.order_by("-created_at").first())
+    if version is None:
+        return render(request, "bake_recipe.html", {
+            "recipe": recipe,
+            "error": "This recipe has no published version yet.",
+        }, status=400)
+
+    options = list(recipe.options.order_by("sort_order", "key"))
+    targets = list(
+        recipe.supported_hardware.select_related("architecture").order_by("slug")
+    )
+
+    release = recipe.pinned_release or recipe.operating_system.releases.filter(
+        is_default=True
+    ).first()
+
+    # For each (target, variant) we have a UpstreamImage row — group them
+    # so the form can present a "Device · variant" picker.
+    image_choices: list[dict] = []
+    if release:
+        for target in targets:
+            target_images = UpstreamImage.objects.filter(
+                release=release, hardware_target=target,
+            ).order_by("variant")
+            for img in target_images:
+                variant = img.variant or ""
+                label = target.name + (f" · {variant}" if variant else "")
+                image_choices.append({
+                    "id": img.id,
+                    "target_slug": target.slug,
+                    "target_name": target.name,
+                    "arch": target.architecture.slug,
+                    "variant": variant,
+                    "label": label,
+                })
+
+    if request.method == "POST":
+        image_id = request.POST.get("upstream_image")
+        upstream = UpstreamImage.objects.filter(pk=image_id).first()
+        if not upstream:
+            messages.error(request, "Pick a device + variant.")
+        else:
+            option_values: dict[str, object] = {}
+            for opt in options:
+                raw = request.POST.get(f"opt_{opt.key}", "")
+                if opt.kind == RecipeOptionKind_BOOLEAN:
+                    option_values[opt.key] = raw == "on"
+                elif opt.kind == RecipeOptionKind_INTEGER:
+                    try:
+                        option_values[opt.key] = int(raw) if raw else None
+                    except ValueError:
+                        option_values[opt.key] = raw
+                else:
+                    option_values[opt.key] = raw
+
+            build = BuildRequest.objects.create(
+                recipe_version=version,
+                hardware_target=upstream.hardware_target,
+                upstream_image=upstream,
+                option_values=option_values,
+                label=str(option_values.get("hostname") or recipe.slug),
+                requester=request.user if request.user.is_authenticated else None,
+            )
+            messages.success(
+                request,
+                f"Build {build.id} queued. Track it in the admin.",
+            )
+            return redirect(f"/admin/builds/buildrequest/{build.id}/change/")
+
+    logo = _os_logo(recipe.operating_system.slug)
+    return render(request, "bake_recipe.html", {
+        "recipe": recipe,
+        "version": version,
+        "release": release,
+        "os_name": recipe.operating_system.name,
+        "os_slug": recipe.operating_system.slug,
+        "logo_svg": logo["svg"],
+        "logo_letter": logo["letter"],
+        "accent": logo["accent"],
+        "options": options,
+        "image_choices": image_choices,
+    })
+
+
+# Avoid hardcoding string literals when checking RecipeOption.kind.
+RecipeOptionKind_BOOLEAN = "boolean"
+RecipeOptionKind_INTEGER = "integer"

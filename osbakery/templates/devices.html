@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Devices & VMs · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern {
+      background-image:
+        linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .card {
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 18px 32px -16px rgb(0 0 0 / 0.18); }
+    .chip {
+      font-variant: small-caps;
+      letter-spacing: .06em;
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+
+  <div class="max-w-7xl mx-auto px-6 md:px-10">
+
+    <header class="pt-10 pb-8">
+      <a href="/" class="font-mono text-xs uppercase tracking-widest text-stone-500 hover:text-stone-900">
+        ← os-bakery
+      </a>
+      <h1 class="mt-3 text-3xl md:text-4xl font-bold tracking-tight">Devices &amp; VMs</h1>
+      <p class="mt-2 text-stone-600 max-w-2xl">
+        Every <code class="font-mono text-xs px-1 bg-stone-100 rounded">HardwareTarget</code>
+        the catalog knows about, grouped by category. {{ total_targets }} targets,
+        {{ total_images }} base images across them.
+      </p>
+
+      <nav class="mt-6 flex flex-wrap items-center gap-2 text-sm">
+        {% for section in sections %}
+        <a href="#cat-{{ section.key }}"
+           class="px-3 py-1.5 rounded-md border border-stone-200 hover:bg-stone-100 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full" style="background: {{ section.accent }}"></span>
+          {{ section.label }}
+          <span class="text-stone-400">{{ section.n_cards }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+    </header>
+
+    <main class="pb-24 space-y-10">
+      {% for section in sections %}
+      <section id="cat-{{ section.key }}">
+        <header class="flex items-baseline gap-3 mb-4">
+          <span class="w-3 h-3 rounded-full" style="background: {{ section.accent }}"></span>
+          <h2 class="text-lg font-semibold">{{ section.label }}</h2>
+          <span class="text-sm text-stone-500 font-mono">
+            // {{ section.n_cards }} target{{ section.n_cards|pluralize }} ·
+            {{ section.n_images }} image{{ section.n_images|pluralize }}
+          </span>
+        </header>
+
+        <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {% for card in section.cards %}
+          <li class="card bg-white rounded-2xl border border-stone-200 p-5 flex flex-col gap-3"
+              style="border-top: 3px solid {{ section.accent }}">
+
+            <header class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-mono text-xs text-stone-500 truncate">{{ card.slug }}</div>
+                <h3 class="text-base font-semibold truncate">{{ card.name }}</h3>
+              </div>
+              <span class="chip text-[10px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap"
+                    style="color: {{ section.accent }}; background: {{ section.accent }}15">
+                {{ card.arch }}
+              </span>
+            </header>
+
+            <dl class="text-xs text-stone-500 flex flex-wrap gap-x-3 gap-y-1 font-mono">
+              <span>boot:{{ card.boot }}</span>
+              {% if card.soc %}<span>{{ card.soc }}</span>{% endif %}
+            </dl>
+
+            {% if card.notes %}
+            <p class="text-xs text-stone-500 line-clamp-2">{{ card.notes }}</p>
+            {% endif %}
+
+            <div class="mt-auto pt-3 border-t border-stone-100 flex flex-col gap-2">
+              <div class="flex flex-wrap items-center gap-1">
+                {% for os in card.oses %}
+                  <a href="/images/?os={{ os.slug }}"
+                     title="{{ os.name }}"
+                     class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium hover:scale-110 transition"
+                     style="color: {{ os.accent }}; background: {{ os.accent }}15">
+                    {% if os.svg %}
+                      <img src="{{ os.svg }}" alt="" class="w-3 h-3">
+                    {% else %}
+                      <span class="w-3 h-3 inline-flex items-center justify-center rounded-sm text-[8px] font-bold"
+                            style="background: {{ os.accent }}; color: white">{{ os.letter }}</span>
+                    {% endif %}
+                    {{ os.slug }}
+                  </a>
+                {% empty %}
+                  <span class="text-xs text-stone-400">No OSes yet</span>
+                {% endfor %}
+              </div>
+              <div class="text-xs text-stone-500 font-mono flex justify-between">
+                <span>{{ card.oses|length }} OS{{ card.oses|length|pluralize:"es" }}</span>
+                <span>{{ card.n_images }} image{{ card.n_images|pluralize }}</span>
+              </div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% empty %}
+      <div class="text-center py-16 text-stone-500">
+        No hardware targets yet. Run
+        <code class="font-mono text-stone-700">python manage.py seed_catalog</code>.
+      </div>
+      {% endfor %}
+    </main>
+
+    <footer class="border-t border-stone-200 py-8 text-xs text-stone-500 flex justify-between font-mono">
+      <span><a href="/" class="hover:text-stone-900">← home</a></span>
+      <span>
+        <a href="/images/" class="hover:text-stone-900">base images →</a> ·
+        <a href="/api/catalog/hardware-targets/" class="hover:text-stone-900">JSON API</a> ·
+        <a href="/admin/catalog/hardwaretarget/" class="hover:text-stone-900">Admin</a>
+      </span>
+    </footer>
+  </div>
+</body>
+</html>

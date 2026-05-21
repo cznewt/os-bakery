@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bake · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com?plugins=line-clamp"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern {
+      background-image:
+        linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .card { transition: transform .12s ease, box-shadow .12s ease; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 18px 32px -16px rgb(0 0 0 / 0.18); }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+
+  <div class="max-w-6xl mx-auto px-6 md:px-10">
+
+    <header class="pt-10 pb-8">
+      <a href="/" class="font-mono text-xs uppercase tracking-widest text-stone-500 hover:text-stone-900">
+        ← os-bakery
+      </a>
+      <h1 class="mt-3 text-3xl md:text-4xl font-bold tracking-tight">Bake</h1>
+      <p class="mt-2 text-stone-600 max-w-2xl">
+        Pick a role template, fill in the device + options, get a download
+        link. Each recipe layers Salt states on top of the matching base
+        image at build time.
+      </p>
+
+      <nav class="mt-6 flex flex-wrap items-center gap-2 text-sm">
+        <a href="/bake/"
+           class="px-3 py-1.5 rounded-md border border-stone-200
+                  {% if not selected_os %}bg-stone-900 text-white border-stone-900{% else %}hover:bg-stone-100{% endif %}">
+          All OSes
+        </a>
+        {% for os_ in all_operating_systems %}
+        <a href="/bake/?os={{ os_.slug }}"
+           class="px-3 py-1.5 rounded-md border border-stone-200
+                  {% if selected_os == os_.slug %}bg-stone-900 text-white border-stone-900{% else %}hover:bg-stone-100{% endif %}">
+          {{ os_.name }}
+        </a>
+        {% endfor %}
+      </nav>
+    </header>
+
+    <main class="pb-24">
+      <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for card in cards %}
+        <li>
+          <a href="/bake/{{ card.slug }}/"
+             class="card block bg-white rounded-2xl border border-stone-200 p-6 h-full flex flex-col gap-4"
+             style="border-top: 3px solid {{ card.accent }}">
+
+            <header class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                   style="background-color: {{ card.accent }}15">
+                {% if card.logo_svg %}
+                  <img src="{{ card.logo_svg }}" alt="{{ card.os_name }}" class="w-8 h-8">
+                {% else %}
+                  <span class="text-xl font-bold font-mono" style="color: {{ card.accent }}">
+                    {{ card.logo_letter }}
+                  </span>
+                {% endif %}
+              </div>
+              <div class="min-w-0">
+                <h3 class="text-lg font-semibold tracking-tight truncate">{{ card.name }}</h3>
+                <p class="text-xs text-stone-500 font-mono">
+                  {{ card.os_slug }} · {{ card.os_kind|lower }}
+                </p>
+              </div>
+            </header>
+
+            <p class="text-sm text-stone-600 line-clamp-3">{{ card.summary }}</p>
+
+            <div class="mt-auto pt-4 border-t border-stone-100">
+              <div class="text-[11px] uppercase tracking-wider text-stone-500 mb-2">
+                Devices ({{ card.hardware|length }})
+              </div>
+              <div class="flex flex-wrap gap-1">
+                {% for hw in card.hardware|slice:":6" %}
+                  <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
+                    {{ hw.slug }}
+                  </span>
+                {% endfor %}
+                {% if card.hardware|length > 6 %}
+                  <span class="text-[11px] font-mono px-1.5 py-0.5 text-stone-400">
+                    +{{ card.hardware|length|add:-6 }}
+                  </span>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between -mt-2">
+              <span class="text-sm font-medium" style="color: {{ card.accent }}">
+                Bake →
+              </span>
+            </div>
+          </a>
+        </li>
+        {% empty %}
+        <li class="col-span-full text-center py-16 text-stone-500">
+          No recipes yet. Run
+          <code class="font-mono text-stone-700">python manage.py seed_recipes</code>.
+        </li>
+        {% endfor %}
+      </ul>
+    </main>
+
+    <footer class="border-t border-stone-200 py-8 text-xs text-stone-500 flex justify-between font-mono">
+      <span><a href="/" class="hover:text-stone-900">← home</a></span>
+      <span>
+        <a href="/devices/" class="hover:text-stone-900">devices</a> ·
+        <a href="/images/" class="hover:text-stone-900">base images</a> ·
+        <a href="/admin/recipes/recipe/" class="hover:text-stone-900">recipe admin</a>
+      </span>
+    </footer>
+  </div>
+</body>
+</html>

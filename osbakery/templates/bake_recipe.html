@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bake · {{ recipe.name }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern {
+      background-image:
+        linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .field input[type=text],
+    .field input[type=number],
+    .field input[type=password],
+    .field textarea,
+    .field select {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid rgb(214 211 209);
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      background: white;
+    }
+    .field input:focus, .field textarea:focus, .field select:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+      border-color: var(--accent);
+    }
+    .field textarea { font-family: ui-monospace, SFMono-Regular, monospace; min-height: 5rem; }
+    .field label { font-weight: 500; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern"
+      style="--accent: {{ accent|default:'#525252' }}">
+
+  <div class="max-w-3xl mx-auto px-6 md:px-10">
+
+    <header class="pt-10 pb-8">
+      <a href="/bake/" class="font-mono text-xs uppercase tracking-widest text-stone-500 hover:text-stone-900">
+        ← all recipes
+      </a>
+
+      <div class="mt-4 flex items-start gap-4">
+        <div class="w-16 h-16 rounded-xl flex items-center justify-center shrink-0"
+             style="background-color: {{ accent }}15">
+          {% if logo_svg %}
+            <img src="{{ logo_svg }}" alt="{{ os_name }}" class="w-12 h-12">
+          {% else %}
+            <span class="text-2xl font-bold font-mono" style="color: {{ accent }}">
+              {{ logo_letter }}
+            </span>
+          {% endif %}
+        </div>
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight">{{ recipe.name }}</h1>
+          <p class="text-sm text-stone-500 font-mono mt-1">
+            {{ recipe.slug }} · {{ os_name }}
+            {% if release %} · default release {{ release.version }}{% if release.codename %} ({{ release.codename }}){% endif %}{% endif %}
+          </p>
+        </div>
+      </div>
+
+      {% if recipe.summary %}
+      <p class="mt-5 text-stone-600">{{ recipe.summary }}</p>
+      {% endif %}
+    </header>
+
+    {% if messages %}
+    <div class="mb-6 space-y-2">
+      {% for m in messages %}
+      <div class="px-4 py-2 rounded-lg text-sm
+                  {% if m.tags == 'error' %}bg-red-50 text-red-800 border border-red-200
+                  {% elif m.tags == 'success' %}bg-emerald-50 text-emerald-800 border border-emerald-200
+                  {% else %}bg-stone-100 text-stone-700{% endif %}">
+        {{ m }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="p-6 rounded-2xl border border-amber-200 bg-amber-50 text-amber-900">
+      {{ error }}
+    </div>
+    {% else %}
+    <form method="post" class="space-y-8 pb-16">
+      {% csrf_token %}
+
+      <fieldset class="bg-white rounded-2xl border border-stone-200 p-6 space-y-4"
+                style="border-top: 3px solid {{ accent }}">
+        <legend class="px-2 -mx-2 -mt-9 mb-2 text-xs uppercase tracking-wider font-mono text-stone-500 bg-stone-50">
+          Step 1 — device
+        </legend>
+
+        <div class="field">
+          <label for="upstream_image" class="block text-sm">Pick a hardware target + variant</label>
+          <select name="upstream_image" id="upstream_image" required class="mt-2">
+            <option value="">— select a device —</option>
+            {% regroup image_choices by target_name as target_groups %}
+            {% for group in target_groups %}
+              <optgroup label="{{ group.grouper }}">
+                {% for choice in group.list %}
+                  <option value="{{ choice.id }}">
+                    {{ choice.label }} ({{ choice.arch }})
+                  </option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+          <p class="mt-1 text-xs text-stone-500">
+            Each (device, variant) pair maps to one upstream image in the catalog.
+          </p>
+        </div>
+      </fieldset>
+
+      {% if options %}
+      <fieldset class="bg-white rounded-2xl border border-stone-200 p-6 space-y-5"
+                style="border-top: 3px solid {{ accent }}">
+        <legend class="px-2 -mx-2 -mt-9 mb-2 text-xs uppercase tracking-wider font-mono text-stone-500 bg-stone-50">
+          Step 2 — options
+        </legend>
+
+        {% for opt in options %}
+        <div class="field">
+          <label for="opt_{{ opt.key }}" class="block text-sm">
+            {{ opt.label }}
+            {% if opt.required %}<span class="text-rose-600">*</span>{% endif %}
+            <span class="ml-1 text-xs text-stone-400 font-mono">{{ opt.key }}</span>
+          </label>
+
+          {% if opt.kind == "text" or opt.kind == "ssh_key" %}
+            <textarea name="opt_{{ opt.key }}" id="opt_{{ opt.key }}"
+                      class="mt-2"
+                      rows="4"
+                      {% if opt.required %}required{% endif %}
+                      {% if opt.default %}placeholder="{{ opt.default }}"{% endif %}></textarea>
+
+          {% elif opt.kind == "boolean" %}
+            <label class="mt-2 inline-flex items-center gap-2">
+              <input type="checkbox" name="opt_{{ opt.key }}" id="opt_{{ opt.key }}"
+                     {% if opt.default %}checked{% endif %}>
+              <span class="text-sm text-stone-600">enable</span>
+            </label>
+
+          {% elif opt.kind == "choice" %}
+            <select name="opt_{{ opt.key }}" id="opt_{{ opt.key }}" class="mt-2"
+                    {% if opt.required %}required{% endif %}>
+              {% for ch in opt.choices %}
+                <option value="{{ ch.value }}" {% if ch.value == opt.default %}selected{% endif %}>
+                  {{ ch.label }}
+                </option>
+              {% endfor %}
+            </select>
+
+          {% elif opt.kind == "integer" %}
+            <input type="number" name="opt_{{ opt.key }}" id="opt_{{ opt.key }}"
+                   class="mt-2"
+                   {% if opt.required %}required{% endif %}
+                   {% if opt.default %}value="{{ opt.default }}"{% endif %}>
+
+          {% elif opt.kind == "secret" %}
+            <input type="password" name="opt_{{ opt.key }}" id="opt_{{ opt.key }}"
+                   class="mt-2"
+                   {% if opt.required %}required{% endif %}
+                   autocomplete="new-password">
+
+          {% else %}
+            <input type="text" name="opt_{{ opt.key }}" id="opt_{{ opt.key }}"
+                   class="mt-2"
+                   {% if opt.required %}required{% endif %}
+                   {% if opt.default %}value="{{ opt.default }}"{% endif %}>
+          {% endif %}
+
+          {% if opt.help_text %}
+          <p class="mt-1 text-xs text-stone-500">{{ opt.help_text }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </fieldset>
+      {% endif %}
+
+      <div class="flex items-center justify-between">
+        <a href="/bake/" class="text-sm text-stone-500 hover:text-stone-900">Cancel</a>
+        <button type="submit"
+                class="px-5 py-2.5 rounded-lg font-medium text-white shadow-sm hover:opacity-90"
+                style="background: {{ accent }}">
+          Bake this image →
+        </button>
+      </div>
+    </form>
+    {% endif %}
+
+    <footer class="border-t border-stone-200 py-6 text-xs text-stone-500 flex justify-between font-mono">
+      <span><a href="/bake/" class="hover:text-stone-900">← recipes</a></span>
+      <span>
+        <a href="/admin/recipes/recipe/{{ recipe.id }}/change/" class="hover:text-stone-900">edit recipe in admin</a>
+      </span>
+    </footer>
+  </div>
+</body>
+</html>
