@@ -26,6 +26,10 @@ OS_LOGOS: dict[str, dict[str, str]] = {
         "svg": "https://cdn.simpleicons.org/ubuntu/e95420",
         "accent": "#e95420",
     },
+    "debian": {
+        "svg": "https://cdn.simpleicons.org/debian/a81d33",
+        "accent": "#a81d33",
+    },
     "raspios": {
         "svg": "https://cdn.simpleicons.org/raspberrypi/c51a4a",
         "accent": "#c51a4a",
@@ -33,6 +37,18 @@ OS_LOGOS: dict[str, dict[str, str]] = {
     "haos": {
         "svg": "https://cdn.simpleicons.org/homeassistant/18bcf2",
         "accent": "#18bcf2",
+    },
+    "omarchy": {
+        "fallback_letter": "O",
+        "accent": "#111827",
+    },
+    "popos": {
+        "svg": "https://cdn.simpleicons.org/popos/48b9c7",
+        "accent": "#48b9c7",
+    },
+    "l4t": {
+        "svg": "https://cdn.simpleicons.org/nvidia/76b900",
+        "accent": "#76b900",
     },
 }
 

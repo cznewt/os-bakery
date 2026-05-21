@@ -8,14 +8,15 @@ add next.
 
 ## At a glance
 
-| Category                      | Examples                                  | In catalog? |
-| ----------------------------- | ----------------------------------------- | ----------- |
-| ARM single-board computers    | Raspberry Pi 3 / 4 / 5                    | ✓           |
-| ARM SBCs (specialty)          | BeagleBone Black, NVIDIA Jetson Nano      | packer-arm-tools only |
-| Generic ARM64 servers / SBCs  | Pine64, Rock Pi, Ampere cloud             | ✓ (`generic-arm64`)   |
-| x86\_64 PCs                   | Laptops, mini-PCs, NUC-class              | ✓ (`pc-amd64`)       |
-| Virtual machines              | QEMU/KVM, Hyper-V, VirtualBox             | ✓                     |
-| Hypervisor (planned)          | VMware ESXi, Proxmox cluster              | aspirational         |
+| Category                      | Examples                                          | In catalog?                  |
+| ----------------------------- | ------------------------------------------------- | ---------------------------- |
+| ARM single-board computers    | Raspberry Pi 3 / 4 / 5                            | ✓                            |
+| ARM SBCs (specialty)          | BeagleBone Black / Blue, NVIDIA Jetson Nano       | ✓ (armhf / arm64)            |
+| Generic ARM64 servers / SBCs  | Pine64, Rock Pi, Ampere cloud                     | ✓ (`generic-arm64`)          |
+| x86\_64 PCs                   | Laptops, mini-PCs, NUC-class                      | ✓ (`pc-amd64`)               |
+| Curated desktop distros       | Omarchy (Arch + Hyprland), Pop!_OS (Intel/NVIDIA) | ✓                            |
+| Virtual machines              | QEMU/KVM, Hyper-V, VirtualBox                     | ✓                            |
+| Hypervisor (planned)          | VMware ESXi, Proxmox cluster                      | aspirational                 |
 
 ## ARM single-board computers
 
@@ -31,34 +32,38 @@ All three boot via the Pi firmware (`boot_method=rpi`); arm64 only. Pi Zero
 2 W is supported in the same image family as `rpi3` (BCM2710/BCM2837
 class) but we don't currently surface it as a separate HardwareTarget.
 
-### BeagleBone Black (and friends)
+### BeagleBone Black + Blue
 
-TI AM335x Cortex-A8, single core, armhf 32-bit. Not yet in the
-os-bakery catalog, but `packer-arm-tools` ships a preset:
+TI AM335x Cortex-A8, single core, armhf 32-bit. Both boards share the
+SoC; Blue adds onboard IMU, barometer, and motor drivers for robotics.
+Catalog rows:
+
+- HardwareTarget `beaglebone-black` (armhf, `uboot`).
+- HardwareTarget `beaglebone-blue` (armhf, `uboot`).
+- OperatingSystem `debian` release `12` Bookworm — sourced from
+  `https://rcn-ee.com/rootfs/bb.org/`.
+
+The same image flashes to both boards; differences (sensor drivers,
+device-tree overlays) are applied per recipe via Salt or chroot scripts.
+`packer-arm-tools` ships compatible presets:
 
 - `beaglebone-black-debian-server-arm32.json`
 - `beaglebone-black-debian-server-salt-minion-arm32.json`
 
-To add it to the catalog:
+### NVIDIA Jetson Nano (Tegra X1)
 
-1. Re-introduce an `armhf` Architecture row (32-bit, family `arm`).
-2. Add a HardwareTarget `beaglebone-black` (arch=`armhf`, boot=`uboot`).
-3. Add an OperatingSystem `debian` (kind=`embedded` or `server`).
-4. Seed an OSRelease + UpstreamImage from
-   `https://rcn-ee.com/rootfs/bb.org/testing/`.
+arm64. Custom NVIDIA kernel ("Linux for Tegra" / L4T) — not interchangeable
+with stock arm64 distros. Catalog rows:
 
-### NVIDIA Jetson Nano (and successors)
+- Architecture `arm64`, HardwareTarget `jetson-nano` (`uboot`-ish — Jetson
+  actually uses NVIDIA's TegraBoot, but `uboot` is the closest fit in our
+  enum).
+- OperatingSystem `l4t` release `r36.4.0` — SD card image from
+  `https://developer.nvidia.com/embedded/jetson-linux`.
 
-Tegra X1 (Jetson Nano) / Tegra Orin (Jetson Orin Nano, Xavier). arm64.
-`packer-arm-tools` preset:
-
-- `jetson-nano-l4t-server-arm64.json`
-
-Image: `Linux for Tegra` (L4T) SD-card images from
-<https://developer.nvidia.com/embedded/learn/get-started-jetson-nano-devkit>.
-Future catalog rows would be `jetson-nano` (Tegra X1) and `jetson-orin-nano`
-(Tegra Orin), both arm64, boot=`uboot` (technically Jetson uses a custom
-TegraBoot, but `uboot` is the closest fit in our enum).
+`packer-arm-tools` preset: `jetson-nano-l4t-server-arm64.json`. Future
+expansion: Jetson Orin Nano / Xavier NX (Tegra Orin family, same OS, new
+HardwareTarget rows).
 
 ### Generic ARM64 SBCs
 
@@ -110,6 +115,28 @@ left to users who'd rather flash the desktop ISO themselves.
   `cloud-azure` slugs would each map to a cloud-specific publish step
   (AMI registration, GCE image import, Azure Managed Image upload).
 
+## Curated desktop distros
+
+### Omarchy
+
+DHH/Basecamp's curated Arch + Hyprland desktop opinion-set. amd64 only.
+Catalog row: OperatingSystem `omarchy`, current release `2.0`. The
+upstream artifact is a single live ISO — recipes for Omarchy mostly
+amount to picking it as a base and dropping in a different keymap or
+shell config; Hyprland customizations layer on top at first boot.
+
+### Pop!_OS
+
+System76's Ubuntu-based desktop. Catalog row: OperatingSystem `popos`,
+release `22.04` (Jammy-based; 24.04 in alpha at time of writing).
+Variants:
+
+- `intel` — stock kernel, Intel/AMD GPU.
+- `nvidia` — NVIDIA proprietary driver baked in.
+
+Both ISOs are amd64; arm64 Pi builds exist as developer previews but
+aren't in the catalog yet.
+
 ## Specialty / future
 
 - **Kali Linux** — `packer-arm-tools` README lists both the amd64 ISO and
@@ -127,22 +154,21 @@ left to users who'd rather flash the desktop ISO themselves.
 
 ## OS × hardware support matrix
 
-| OS         | rpi3 | rpi4 | rpi5 | pc-amd64 | generic-arm64 | vm-qemu | vm-hyperv | vm-virtualbox | beaglebone | jetson-nano |
-| ---------- | :--: | :--: | :--: | :------: | :-----------: | :-----: | :-------: | :-----------: | :--------: | :---------: |
-| Batocera   | ✓¹  | ✓   | ✓   | ✓       | —             | —      | —        | —            | —          | —           |
-| Ubuntu     | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓²    | ✓²      | ✓²          | (Debian³)  | —           |
-| RaspiOS    | ✓   | ✓   | ✓   | —        | —             | —      | —        | —            | —          | —           |
-| HAOS       | —    | ✓   | ✓   | ✓       | —             | —      | —        | —            | —          | —           |
-| Debian     | —    | —    | —    | —        | —             | —      | —        | —            | ✓³         | —           |
-| L4T        | —    | —    | —    | —        | —             | —      | —        | —            | —          | ✓³         |
-| Kali       | (✓⁴) | (✓⁴) | —    | (✓⁴)    | —             | —      | —        | —            | —          | —           |
+| OS         | rpi3 | rpi4 | rpi5 | pc-amd64 | generic-arm64 | vm-qemu | vm-hyperv | vm-virtualbox | beaglebone (black/blue) | jetson-nano |
+| ---------- | :--: | :--: | :--: | :------: | :-----------: | :-----: | :-------: | :-----------: | :---------------------: | :---------: |
+| Batocera   | —    | ✓   | ✓   | ✓       | —             | —      | —        | —            | —                       | —           |
+| Ubuntu     | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓¹    | ✓¹      | ✓¹          | —                       | —           |
+| Debian     | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓¹    | ✓¹      | ✓¹          | ✓ (Bookworm armhf)     | —           |
+| RaspiOS    | ✓   | ✓   | ✓   | —        | —             | —      | —        | —            | —                       | —           |
+| HAOS       | —    | ✓   | ✓   | ✓       | —             | —      | —        | —            | —                       | —           |
+| Omarchy    | —    | —    | —    | ✓ (desktop ISO) | —    | —      | —        | —            | —                       | —           |
+| Pop!_OS    | —    | —    | —    | ✓ (intel + nvidia) | — | —      | —        | —            | —                       | —           |
+| L4T        | —    | —    | —    | —        | —             | —      | —        | —            | —                       | ✓           |
+| Kali       | (✓²) | (✓²) | —    | (✓²)    | —             | —      | —        | —            | —                       | —           |
 
-¹ Batocera periodically drops active rpi3 builds — verify upstream URL.
-² Ubuntu VM targets are server-only; desktop-in-VM is the user installing
-the desktop ISO themselves.
-³ Reachable today only via the `packer-arm-tools` presets — not seeded in
-the os-bakery catalog yet.
-⁴ Aspirational — Kali ships both amd64 ISOs and arm64+raspi images;
+¹ VM targets are server-only; desktop-in-VM is the user installing the
+desktop ISO themselves.
+² Aspirational — Kali ships both amd64 ISOs and arm64+raspi images;
 trivially seedable when needed.
 
 ## Adding a new platform
