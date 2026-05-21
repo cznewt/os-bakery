@@ -157,6 +157,65 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("esp8266", "Espressif ESP8266", "xtensa", "custom",
                soc="ESP8266 (Xtensa LX106, 80 MHz, Wi-Fi only)",
                notes="Legacy; many Shelly / Sonoff / Wemos boards."),
+    # ---- ESP dev boards ------------------------------------------------
+    TargetSeed("esp32-devkit", "Espressif ESP32-DevKitC", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="Reference ESP32 dev board with USB-UART bridge."),
+    TargetSeed("esp32-s3-devkit", "Espressif ESP32-S3-DevKitC", "xtensa", "custom",
+               soc="ESP32-S3 (Xtensa LX7)",
+               notes="Reference ESP32-S3 dev board, USB-OTG ready."),
+    TargetSeed("esp32-c3-devkit", "Espressif ESP32-C3-DevKitM", "riscv32", "custom",
+               soc="ESP32-C3 (RISC-V)",
+               notes="Reference ESP32-C3 dev board, RISC-V single-core."),
+    TargetSeed("esp32-c6-devkit", "Espressif ESP32-C6-DevKitC", "riscv32", "custom",
+               soc="ESP32-C6 (RISC-V)",
+               notes="Reference ESP32-C6 dev board with 802.15.4 radio."),
+    TargetSeed("esp8266-nodemcu", "NodeMCU ESP8266", "xtensa", "custom",
+               soc="ESP8266 (Xtensa LX106)",
+               notes="Classic NodeMCU dev board — ESP-12E module + USB-UART."),
+    # ---- Vendor devices (https://github.com/Craftama/esphome-models) ---
+    TargetSeed("ai-thinker-esp32-cam", "AI-Thinker ESP32-CAM", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="ESP32 + OV2640 camera + microSD socket."),
+    TargetSeed("athom-ps01", "Athom PS01 smart plug", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="EU/US smart plug with energy metering."),
+    TargetSeed("laskakit-esplan", "LaskaKit ESPlan", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6) + W5500 Ethernet",
+               notes="ESP32 with on-board Ethernet — popular wired HA node."),
+    TargetSeed("laskakit-vindriktning", "LaskaKit Vindriktning add-on", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="ESP32 add-on board that plugs inside the IKEA "
+                     "Vindriktning air-quality sensor."),
+    TargetSeed("m5stack-atoms3", "M5Stack AtomS3", "xtensa", "custom",
+               soc="ESP32-S3 (Xtensa LX7)",
+               notes="Tiny ESP32-S3 module with display + button."),
+    TargetSeed("shelly-1", "Shelly 1", "xtensa", "custom",
+               soc="ESP8266 (Xtensa LX106)",
+               notes="Compact relay flashable via TTL — OTA after first bake."),
+    TargetSeed("sonoff-mini", "Sonoff Mini R3", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="In-wall switch behind existing toggles. R3 = ESP32."),
+    TargetSeed("sonoff-4ch-pro", "Sonoff 4CH Pro R2", "xtensa", "custom",
+               soc="ESP8266 (Xtensa LX106)",
+               notes="4-channel DIN-rail Sonoff relay."),
+    TargetSeed("sonoff-nspanel", "Sonoff NSPanel", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="Wall-mount smart panel with touchscreen."),
+    TargetSeed("sonoff-s20", "Sonoff S20", "xtensa", "custom",
+               soc="ESP8266 (Xtensa LX106)",
+               notes="Classic smart plug, EU/UK/US variants."),
+    TargetSeed("ulanzi-tc001", "Ulanzi TC001 pixel clock", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="32×8 RGB matrix smart clock — AWTRIX firmware "
+                     "compatible."),
+    TargetSeed("weber-igrill-v2", "Weber iGrill v2", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6)",
+               notes="BLE companion / replacement firmware for the Weber "
+                     "iGrill v2 thermometer."),
+    TargetSeed("wemos-d1-mini", "Wemos D1 mini", "xtensa", "custom",
+               soc="ESP8266 (Xtensa LX106)",
+               notes="Tiny low-cost ESP8266 board — community staple."),
 ]
 
 OPERATING_SYSTEMS: list[OSSeed] = [
@@ -459,11 +518,41 @@ def _images() -> list[ImageSeed]:
                               "pc-amd64", "",
                               _PROXMOX_VE.format(release=pve_release), "iso"))
 
-    # ESPHome — one factory bin per chip target per release.
+    # ESPHome — every dev board / vendor device maps to one of five ESP
+    # chip families; the factory bin URL is per-chip but the catalog row is
+    # per-device so recipes can pick the right pinout / GPIO map.
+    esphome_targets = [
+        # (HardwareTarget slug, underlying ESPHome chip platform)
+        ("esp32",                 "esp32"),
+        ("esp32-s3",              "esp32-s3"),
+        ("esp32-c3",              "esp32-c3"),
+        ("esp32-c6",              "esp32-c6"),
+        ("esp8266",               "esp8266"),
+        # Dev boards
+        ("esp32-devkit",          "esp32"),
+        ("esp32-s3-devkit",       "esp32-s3"),
+        ("esp32-c3-devkit",       "esp32-c3"),
+        ("esp32-c6-devkit",       "esp32-c6"),
+        ("esp8266-nodemcu",       "esp8266"),
+        ("wemos-d1-mini",         "esp8266"),
+        # Vendor devices (from craftama/esphome-models)
+        ("ai-thinker-esp32-cam",  "esp32"),
+        ("athom-ps01",            "esp32"),
+        ("laskakit-esplan",       "esp32"),
+        ("laskakit-vindriktning", "esp32"),
+        ("m5stack-atoms3",        "esp32-s3"),
+        ("shelly-1",              "esp8266"),
+        ("sonoff-mini",           "esp32"),
+        ("sonoff-4ch-pro",        "esp8266"),
+        ("sonoff-nspanel",        "esp32"),
+        ("sonoff-s20",            "esp8266"),
+        ("ulanzi-tc001",          "esp32"),
+        ("weber-igrill-v2",       "esp32"),
+    ]
     for esphome_release in ("2025.11.0", "2026.4.0"):
-        for chip in ("esp32", "esp32-s3", "esp32-c3", "esp32-c6", "esp8266"):
+        for target, chip in esphome_targets:
             rows.append(ImageSeed(
-                "esphome", esphome_release, "stable", chip, "",
+                "esphome", esphome_release, "stable", target, "",
                 _ESPHOME_FACTORY.format(release=esphome_release, chip=chip),
                 "img",
             ))

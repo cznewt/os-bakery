@@ -371,7 +371,7 @@ RECIPES: list[dict[str, Any]] = [
         "summary": "LaskaKit ESPlan (ESP32 + Ethernet) preset — Home "
                    "Assistant API, optional I²C sensor bus, BLE proxy.",
         "os_slug": "esphome",
-        "hardware_slugs": ["esp32"],
+        "hardware_slugs": ["laskakit-esplan"],
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
@@ -408,7 +408,11 @@ RECIPES: list[dict[str, Any]] = [
                    "advertisements to Home Assistant — great for spreading "
                    "presence sensors around the house.",
         "os_slug": "esphome",
-        "hardware_slugs": ["esp32", "esp32-c3", "esp32-c6", "esp32-s3"],
+        "hardware_slugs": [
+            "esp32", "esp32-c3", "esp32-c6", "esp32-s3",
+            "esp32-devkit", "esp32-s3-devkit", "esp32-c3-devkit",
+            "esp32-c6-devkit", "m5stack-atoms3",
+        ],
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
@@ -437,7 +441,7 @@ RECIPES: list[dict[str, Any]] = [
                    "smart device — adds PM2.5 reporting and an RGB status "
                    "LED to your Home Assistant.",
         "os_slug": "esphome",
-        "hardware_slugs": ["esp32", "esp8266"],
+        "hardware_slugs": ["laskakit-vindriktning"],
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
@@ -472,8 +476,18 @@ RECIPES: list[dict[str, Any]] = [
         "summary": "Bring your own ESPHome YAML — handy when the device "
                    "isn't a preset in craftama/esphome-models yet.",
         "os_slug": "esphome",
-        "hardware_slugs": ["esp32", "esp32-s3", "esp32-c3", "esp32-c6",
-                           "esp8266"],
+        "hardware_slugs": [
+            # Generic chips
+            "esp32", "esp32-s3", "esp32-c3", "esp32-c6", "esp8266",
+            # Dev boards
+            "esp32-devkit", "esp32-s3-devkit", "esp32-c3-devkit",
+            "esp32-c6-devkit", "esp8266-nodemcu", "wemos-d1-mini",
+            # Vendor devices
+            "ai-thinker-esp32-cam", "athom-ps01", "laskakit-esplan",
+            "laskakit-vindriktning", "m5stack-atoms3", "shelly-1",
+            "sonoff-mini", "sonoff-4ch-pro", "sonoff-nspanel",
+            "sonoff-s20", "ulanzi-tc001", "weber-igrill-v2",
+        ],
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {

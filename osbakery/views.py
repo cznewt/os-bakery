@@ -138,19 +138,25 @@ def home(request: HttpRequest) -> HttpResponse:
     return render(request, "home.html", context)
 
 
-def _categorize_target(slug: str) -> str:
+_SBC_SLUGS = {
+    "generic-arm64",
+    "beaglebone-black", "beaglebone-blue",
+    "jetson-nano", "jetson-xavier-nx", "jetson-orin-nano",
+}
+
+
+def _categorize_target(slug: str, arch_slug: str = "") -> str:
     if slug.startswith("rpi"):
         return "rpi"
     if slug.startswith("vm-"):
         return "vm"
     if slug == "pc-amd64":
         return "pc"
-    if slug in {
-        "generic-arm64",
-        "beaglebone-black", "beaglebone-blue",
-        "jetson-nano", "jetson-xavier-nx", "jetson-orin-nano",
-    }:
+    if slug in _SBC_SLUGS:
         return "sbc"
+    # ESP / microcontroller targets all live on Xtensa or RISC-V 32-bit.
+    if arch_slug in {"xtensa", "riscv32"}:
+        return "mcu"
     return "handheld"
 
 
@@ -160,6 +166,7 @@ CATEGORY_ORDER: list[tuple[str, str, str]] = [
     ("pc", "PC / Laptop", "#0ea5e9"),
     ("sbc", "ARM SBC / Embedded", "#76b900"),
     ("handheld", "Retro handheld", "#8b5cf6"),
+    ("mcu", "Microcontroller / ESP", "#000000"),
     ("vm", "Virtual machine", "#f59e0b"),
 ]
 
@@ -196,7 +203,9 @@ def devices(request: HttpRequest) -> HttpResponse:
     cards_by_category: dict[str, list[dict]] = {}
     for t in targets:
         oses_for_target = sorted(target_oses.get(t.id, set()))
-        cards_by_category.setdefault(_categorize_target(t.slug), []).append({
+        cards_by_category.setdefault(
+            _categorize_target(t.slug, t.architecture.slug), []
+        ).append({
             "slug": t.slug,
             "name": t.name,
             "arch": t.architecture.slug,
