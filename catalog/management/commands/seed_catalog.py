@@ -113,6 +113,31 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("jetson-orin-nano", "NVIDIA Jetson Orin Nano", "arm64", "uboot",
                soc="Tegra Orin",
                notes="Current Jetson dev kit (8 GB / 4 GB). L4T r36.x."),
+    # ---- Retro handhelds (Batocera per-device builds) -----------------
+    TargetSeed("rg552", "Anbernic RG552", "arm64", "uboot",
+               soc="Rockchip RK3399",
+               notes="Dual-screen Anbernic flagship handheld."),
+    TargetSeed("rg353p", "Anbernic RG353P", "arm64", "uboot",
+               soc="Rockchip RK3566",
+               notes="RG353 series — clamshell, plastic shell."),
+    TargetSeed("rg353ps", "Anbernic RG353PS", "arm64", "uboot",
+               soc="Rockchip RK3566",
+               notes="RG353 series — clamshell, slim variant."),
+    TargetSeed("rg353v", "Anbernic RG353V", "arm64", "uboot",
+               soc="Rockchip RK3566",
+               notes="RG353 series — vertical layout (Game Boy style)."),
+    TargetSeed("rg353vs", "Anbernic RG353VS", "arm64", "uboot",
+               soc="Rockchip RK3566",
+               notes="RG353 series — vertical, slim variant."),
+    TargetSeed("rg503", "Anbernic RG503", "arm64", "uboot",
+               soc="Rockchip RK3566",
+               notes="OLED handheld."),
+    TargetSeed("loki-zero", "Anbernic Loki Zero", "arm64", "uboot",
+               notes="Loki-series budget handheld (per Batocera download page)."),
+    TargetSeed("flip-2", "Anbernic Flip 2", "arm64", "uboot",
+               notes="Clamshell flip-style handheld (per Batocera download page)."),
+    TargetSeed("pocket-5", "Retroid Pocket 5", "arm64", "uboot",
+               notes="Retroid Pocket 5 handheld (per Batocera download page)."),
 ]
 
 OPERATING_SYSTEMS: list[OSSeed] = [
@@ -165,6 +190,12 @@ RELEASES: list[ReleaseSeed] = [
     # BeagleBone armhf builds (rcn-ee.com still ships Bookworm-based images).
     ReleaseSeed("debian", "12", "stable", codename="Bookworm"),
     ReleaseSeed("debian", "13", "stable", codename="Trixie", is_default=True),
+    # RaspiOS — date-stamped releases. Keep a recent history so recipes
+    # can pin to a specific image while new builds default to the latest.
+    ReleaseSeed("raspios", "2023-05-03", "stable", codename="Bullseye"),
+    ReleaseSeed("raspios", "2024-07-04", "stable", codename="Bookworm"),
+    ReleaseSeed("raspios", "2024-11-19", "stable", codename="Bookworm"),
+    ReleaseSeed("raspios", "2025-03-15", "stable", codename="Bookworm"),
     ReleaseSeed("raspios", "2025-05-13", "stable", codename="Bookworm",
                 is_default=True),
     # Home Assistant OS — only the current major is supported.
@@ -177,10 +208,14 @@ RELEASES: list[ReleaseSeed] = [
     ReleaseSeed("l4t", "r32.7.6", "stable"),  # Jetson Nano (Tegra X1)
     ReleaseSeed("l4t", "r35.6.0", "stable"),  # Jetson Xavier NX
     ReleaseSeed("l4t", "r36.4.0", "stable", is_default=True),  # Jetson Orin
-    # Kali Linux — quarterly cadence; pin the current series.
+    # Kali Linux — quarterly cadence; keep the last four quarters seeded.
+    ReleaseSeed("kali", "2024.4", "stable"),
+    ReleaseSeed("kali", "2025.1", "stable"),
+    ReleaseSeed("kali", "2025.2", "stable"),
     ReleaseSeed("kali", "2025.3", "stable", is_default=True),
-    # Proxmox VE — 8.x is the current major.
-    ReleaseSeed("proxmox-ve", "8.3", "stable", is_default=True),
+    # Proxmox VE — 9.x is the current major; 8.3 kept for legacy clusters.
+    ReleaseSeed("proxmox-ve", "8.3", "stable"),
+    ReleaseSeed("proxmox-ve", "9.1", "stable", is_default=True),
 ]
 
 
@@ -240,13 +275,15 @@ _KALI_RPI = "https://kali.download/arm-images/kali-{release}/kali-linux-{release
 # Proxmox VE — single amd64 bare-metal installer ISO per point release.
 _PROXMOX_VE = "https://download.proxmox.com/iso/proxmox-ve_{release}-1.iso"
 
+# RaspiOS — date-stamped folder + matching filename. Codename is the
+# Debian series (bullseye, bookworm, …) lowercased.
 _RASPIOS_DESKTOP = (
     "https://downloads.raspberrypi.com/raspios_arm64/images/"
-    "raspios_arm64-2025-05-13/2025-05-13-raspios-bookworm-arm64.img.xz"
+    "raspios_arm64-{date}/{date}-raspios-{codename}-arm64.img.xz"
 )
 _RASPIOS_LITE = (
     "https://downloads.raspberrypi.com/raspios_lite_arm64/images/"
-    "raspios_lite_arm64-2025-05-13/2025-05-13-raspios-bookworm-arm64-lite.img.xz"
+    "raspios_lite_arm64-{date}/{date}-raspios-{codename}-arm64-lite.img.xz"
 )
 
 # HAOS is versioned per release; one URL template covers every (version,
@@ -261,13 +298,28 @@ def _images() -> list[ImageSeed]:
     rows: list[ImageSeed] = []
 
     # Batocera 42 / 43 — one image per target per version, no variant.
+    # Platform name is whatever the Batocera updates.batocera.org URL uses
+    # as the per-device folder name (typically SoC for SBCs, slug for
+    # handhelds).
+    batocera_targets = [
+        # Single-board computers — platform = SoC family
+        ("rpi3", "bcm2710"),
+        ("rpi4", "bcm2711"),
+        ("rpi5", "bcm2712"),
+        ("pc-amd64", "x86_64"),
+        # Retro handhelds — platform = device slug
+        ("rg552", "rg552"),
+        ("rg353p", "rg353p"),
+        ("rg353ps", "rg353ps"),
+        ("rg353v", "rg353v"),
+        ("rg353vs", "rg353vs"),
+        ("rg503", "rg503"),
+        ("loki-zero", "loki-zero"),
+        ("flip-2", "flip-2"),
+        ("pocket-5", "pocket-5"),
+    ]
     for version in ("42", "43"):
-        for target, platform in [
-            ("rpi3", "bcm2710"),
-            ("rpi4", "bcm2711"),
-            ("rpi5", "bcm2712"),
-            ("pc-amd64", "x86_64"),
-        ]:
+        for target, platform in batocera_targets:
             rows.append(ImageSeed(
                 "batocera", version, "stable", target, "",
                 _BATOCERA.format(platform=platform, version=version),
@@ -341,24 +393,40 @@ def _images() -> list[ImageSeed]:
     rows.append(ImageSeed("l4t", "r36.4.0", "stable", "jetson-orin-nano", "",
                           _L4T_ORIN_NANO, "img"))
 
-    # Kali Linux — amd64 desktop installer ISO + arm64+raspi image.
-    kali_release = "2025.3"
-    rows.append(ImageSeed("kali", kali_release, "stable", "pc-amd64", "desktop",
-                          _KALI_AMD.format(release=kali_release), "iso"))
-    for target in ("rpi4", "rpi5"):
-        rows.append(ImageSeed("kali", kali_release, "stable", target, "",
-                              _KALI_RPI.format(release=kali_release), "img.xz"))
+    # Kali Linux — amd64 desktop installer ISO + arm64+raspi image, per
+    # quarterly release.
+    for kali_release in ("2024.4", "2025.1", "2025.2", "2025.3"):
+        rows.append(ImageSeed("kali", kali_release, "stable", "pc-amd64",
+                              "desktop",
+                              _KALI_AMD.format(release=kali_release), "iso"))
+        for target in ("rpi4", "rpi5"):
+            rows.append(ImageSeed("kali", kali_release, "stable", target, "",
+                                  _KALI_RPI.format(release=kali_release),
+                                  "img.xz"))
 
-    # Proxmox VE — single amd64 bare-metal installer ISO.
-    rows.append(ImageSeed("proxmox-ve", "8.3", "stable", "pc-amd64", "",
-                          _PROXMOX_VE.format(release="8.3"), "iso"))
+    # Proxmox VE — single amd64 bare-metal installer ISO per major.
+    for pve_release in ("8.3", "9.1"):
+        rows.append(ImageSeed("proxmox-ve", pve_release, "stable",
+                              "pc-amd64", "",
+                              _PROXMOX_VE.format(release=pve_release), "iso"))
 
-    # RaspiOS Bookworm — one image per arm64 variant, three Pi targets share it.
-    for target in ("rpi3", "rpi4", "rpi5"):
-        rows.append(ImageSeed("raspios", "2025-05-13", "stable", target,
-                              "desktop", _RASPIOS_DESKTOP, "img.xz"))
-        rows.append(ImageSeed("raspios", "2025-05-13", "stable", target,
-                              "lite", _RASPIOS_LITE, "img.xz"))
+    # RaspiOS — one image per arm64 variant per dated release; three Pi
+    # targets share each image.
+    raspios_dates = [
+        ("2023-05-03", "bullseye"),
+        ("2024-07-04", "bookworm"),
+        ("2024-11-19", "bookworm"),
+        ("2025-03-15", "bookworm"),
+        ("2025-05-13", "bookworm"),
+    ]
+    for date, codename in raspios_dates:
+        desktop_url = _RASPIOS_DESKTOP.format(date=date, codename=codename)
+        lite_url = _RASPIOS_LITE.format(date=date, codename=codename)
+        for target in ("rpi3", "rpi4", "rpi5"):
+            rows.append(ImageSeed("raspios", date, "stable", target,
+                                  "desktop", desktop_url, "img.xz"))
+            rows.append(ImageSeed("raspios", date, "stable", target,
+                                  "lite", lite_url, "img.xz"))
 
     # HAOS — per-target appliance image, no variant. Only the current
     # supported major is seeded; older majors (14/15/16) are EOL.
