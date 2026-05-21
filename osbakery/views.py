@@ -50,6 +50,14 @@ OS_LOGOS: dict[str, dict[str, str]] = {
         "svg": "https://cdn.simpleicons.org/nvidia/76b900",
         "accent": "#76b900",
     },
+    "kali": {
+        "svg": "https://cdn.simpleicons.org/kalilinux/557c94",
+        "accent": "#557c94",
+    },
+    "proxmox-ve": {
+        "svg": "https://cdn.simpleicons.org/proxmox/e57000",
+        "accent": "#e57000",
+    },
 }
 
 

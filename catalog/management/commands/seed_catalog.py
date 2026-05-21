@@ -105,7 +105,14 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("jetson-nano", "NVIDIA Jetson Nano", "arm64", "uboot",
                soc="Tegra X1",
                notes="L4T (Linux for Tegra) only — the Tegra kernel is "
-                     "Ubuntu-based but not interchangeable with stock arm64."),
+                     "Ubuntu-based but not interchangeable with stock arm64. "
+                     "Last supported L4T: r32.7.x."),
+    TargetSeed("jetson-xavier-nx", "NVIDIA Jetson Xavier NX", "arm64", "uboot",
+               soc="Tegra Xavier",
+               notes="L4T r35.x. Lower-power Xavier module for the dev kit."),
+    TargetSeed("jetson-orin-nano", "NVIDIA Jetson Orin Nano", "arm64", "uboot",
+               soc="Tegra Orin",
+               notes="Current Jetson dev kit (8 GB / 4 GB). L4T r36.x."),
 ]
 
 OPERATING_SYSTEMS: list[OSSeed] = [
@@ -133,6 +140,15 @@ OPERATING_SYSTEMS: list[OSSeed] = [
     OSSeed("l4t", "Linux for Tegra", "NVIDIA", "embedded",
            homepage="https://developer.nvidia.com/embedded/jetson-linux",
            summary="Ubuntu-based OS with NVIDIA's Tegra kernel — Jetson SoCs."),
+    OSSeed("kali", "Kali Linux", "OffSec", "desktop",
+           homepage="https://www.kali.org",
+           summary="Debian-based pentesting / red-team distribution; "
+                   "amd64 ISO + arm64 Raspberry Pi images."),
+    OSSeed("proxmox-ve", "Proxmox Virtual Environment", "Proxmox Server Solutions GmbH",
+           "server",
+           homepage="https://www.proxmox.com/en/proxmox-virtual-environment",
+           summary="Bare-metal Debian-based KVM + LXC hypervisor "
+                   "(`proxmox-ve_*.iso`). amd64 only."),
 ]
 
 RELEASES: list[ReleaseSeed] = [
@@ -153,10 +169,18 @@ RELEASES: list[ReleaseSeed] = [
                 is_default=True),
     # Home Assistant OS — only the current major is supported.
     ReleaseSeed("haos", "17.1", "stable", is_default=True),
-    # Curated desktop distros + Jetson L4T.
+    # Curated desktop distros.
     ReleaseSeed("omarchy", "2.0", "stable", is_default=True),
     ReleaseSeed("popos", "22.04", "lts", codename="Jammy", is_default=True),
-    ReleaseSeed("l4t", "r36.4.0", "stable", is_default=True),
+    # Linux for Tegra — one release per Tegra family. r36 is the headline
+    # (Orin), but Jetson Nano + Xavier are stuck on older majors.
+    ReleaseSeed("l4t", "r32.7.6", "stable"),  # Jetson Nano (Tegra X1)
+    ReleaseSeed("l4t", "r35.6.0", "stable"),  # Jetson Xavier NX
+    ReleaseSeed("l4t", "r36.4.0", "stable", is_default=True),  # Jetson Orin
+    # Kali Linux — quarterly cadence; pin the current series.
+    ReleaseSeed("kali", "2025.3", "stable", is_default=True),
+    # Proxmox VE — 8.x is the current major.
+    ReleaseSeed("proxmox-ve", "8.3", "stable", is_default=True),
 ]
 
 
@@ -195,11 +219,26 @@ _OMARCHY_ISO = "https://omarchy.org/releases/omarchy-2.0.0-x86_64.iso"
 _POPOS_INTEL = "https://iso.pop-os.org/22.04/amd64/intel/pop-os_22.04_amd64_intel_22.iso"
 _POPOS_NVIDIA = "https://iso.pop-os.org/22.04/amd64/nvidia/pop-os_22.04_amd64_nvidia_22.iso"
 
-# NVIDIA L4T (Jetson Nano). One zipped SD card image per release.
+# NVIDIA L4T — one zipped SD card image per (Tegra family, release).
 _L4T_NANO = (
-    "https://developer.nvidia.com/embedded/l4t/r36_release_v4.0/"
-    "release/jetson_nano_sd_card_image_r36.4.0_aarch64.zip"
+    "https://developer.nvidia.com/downloads/embedded/l4t/r32_release_v7.6/"
+    "jp_4.6.6_b39_sd_card_image_jetson-nano.zip"
 )
+_L4T_XAVIER_NX = (
+    "https://developer.nvidia.com/embedded/l4t/r35_release_v6.0/release/"
+    "jp_5.1.6_b39_sd_card_image_jetson-xavier-nx.zip"
+)
+_L4T_ORIN_NANO = (
+    "https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/"
+    "release/jp_6.1_b113_sd_card_image_jetson-orin-nano-devkit.zip"
+)
+
+# Kali Linux — amd64 installer ISO + arm64+raspi image (shared rpi4 / rpi5).
+_KALI_AMD = "https://cdimage.kali.org/kali-{release}/kali-linux-{release}-installer-amd64.iso"
+_KALI_RPI = "https://kali.download/arm-images/kali-{release}/kali-linux-{release}-raspberry-pi-arm64.img.xz"
+
+# Proxmox VE — single amd64 bare-metal installer ISO per point release.
+_PROXMOX_VE = "https://download.proxmox.com/iso/proxmox-ve_{release}-1.iso"
 
 _RASPIOS_DESKTOP = (
     "https://downloads.raspberrypi.com/raspios_arm64/images/"
@@ -294,9 +333,25 @@ def _images() -> list[ImageSeed]:
     rows.append(ImageSeed("popos", "22.04", "lts", "pc-amd64", "nvidia",
                           _POPOS_NVIDIA, "iso"))
 
-    # Linux for Tegra — Jetson Nano SD card image.
-    rows.append(ImageSeed("l4t", "r36.4.0", "stable", "jetson-nano", "",
+    # Linux for Tegra — one image per Tegra family.
+    rows.append(ImageSeed("l4t", "r32.7.6", "stable", "jetson-nano", "",
                           _L4T_NANO, "img"))
+    rows.append(ImageSeed("l4t", "r35.6.0", "stable", "jetson-xavier-nx", "",
+                          _L4T_XAVIER_NX, "img"))
+    rows.append(ImageSeed("l4t", "r36.4.0", "stable", "jetson-orin-nano", "",
+                          _L4T_ORIN_NANO, "img"))
+
+    # Kali Linux — amd64 desktop installer ISO + arm64+raspi image.
+    kali_release = "2025.3"
+    rows.append(ImageSeed("kali", kali_release, "stable", "pc-amd64", "desktop",
+                          _KALI_AMD.format(release=kali_release), "iso"))
+    for target in ("rpi4", "rpi5"):
+        rows.append(ImageSeed("kali", kali_release, "stable", target, "",
+                              _KALI_RPI.format(release=kali_release), "img.xz"))
+
+    # Proxmox VE — single amd64 bare-metal installer ISO.
+    rows.append(ImageSeed("proxmox-ve", "8.3", "stable", "pc-amd64", "",
+                          _PROXMOX_VE.format(release="8.3"), "iso"))
 
     # RaspiOS Bookworm — one image per arm64 variant, three Pi targets share it.
     for target in ("rpi3", "rpi4", "rpi5"):

@@ -50,20 +50,25 @@ device-tree overlays) are applied per recipe via Salt or chroot scripts.
 - `beaglebone-black-debian-server-arm32.json`
 - `beaglebone-black-debian-server-salt-minion-arm32.json`
 
-### NVIDIA Jetson Nano (Tegra X1)
+### NVIDIA Jetson family
 
-arm64. Custom NVIDIA kernel ("Linux for Tegra" / L4T) — not interchangeable
-with stock arm64 distros. Catalog rows:
+arm64 with NVIDIA's "Linux for Tegra" (L4T) kernel — not interchangeable
+with stock arm64 distros. Each Tegra family is stuck on a different L4T
+major because the kernel is family-specific:
 
-- Architecture `arm64`, HardwareTarget `jetson-nano` (`uboot`-ish — Jetson
-  actually uses NVIDIA's TegraBoot, but `uboot` is the closest fit in our
-  enum).
-- OperatingSystem `l4t` release `r36.4.0` — SD card image from
-  `https://developer.nvidia.com/embedded/jetson-linux`.
+| HardwareTarget       | SoC           | L4T release in catalog | Notes                                  |
+| -------------------- | ------------- | ---------------------- | -------------------------------------- |
+| `jetson-nano`        | Tegra X1      | `r32.7.6`              | EOL — last release that supports X1.   |
+| `jetson-xavier-nx`   | Tegra Xavier  | `r35.6.0`              | Lower-power Xavier module + dev kit.   |
+| `jetson-orin-nano`   | Tegra Orin    | `r36.4.0`              | Current flagship dev kit (4 / 8 GB).   |
 
-`packer-arm-tools` preset: `jetson-nano-l4t-server-arm64.json`. Future
-expansion: Jetson Orin Nano / Xavier NX (Tegra Orin family, same OS, new
-HardwareTarget rows).
+OperatingSystem `l4t`. SD card images from
+`https://developer.nvidia.com/embedded/jetson-linux`. `packer-arm-tools`
+preset (`jetson-nano-l4t-server-arm64.json`) currently targets the Nano;
+Orin / Xavier presets are a follow-up.
+
+Future expansion: Jetson AGX Orin, Jetson Orin NX, Jetson AGX Xavier
+(same OS, new HardwareTarget rows; each ships its own SD card image URL).
 
 ### Generic ARM64 SBCs
 
@@ -137,11 +142,26 @@ Variants:
 Both ISOs are amd64; arm64 Pi builds exist as developer previews but
 aren't in the catalog yet.
 
+## Kali Linux
+
+OffSec's Debian-based pentest / red-team distro. Quarterly cadence —
+catalog pinned to the current series. Targets:
+
+- `pc-amd64` (desktop) — `cdimage.kali.org/.../kali-linux-{rel}-installer-amd64.iso`
+- `rpi4` / `rpi5` — `kali.download/arm-images/.../kali-linux-{rel}-raspberry-pi-arm64.img.xz`
+  (a single arm64+raspi image runs on both Pi tiers).
+
+## Proxmox VE
+
+Proxmox Server Solutions GmbH's bare-metal Debian-based KVM + LXC
+hypervisor. amd64 only. Catalog row: OperatingSystem `proxmox-ve` at
+release `8.3`. Single artifact: the installer ISO at
+`download.proxmox.com/iso/proxmox-ve_{rel}-1.iso`. Recipes for Proxmox
+mostly amount to preseeding the network + cluster join answers in the
+installer.
+
 ## Specialty / future
 
-- **Kali Linux** — `packer-arm-tools` README lists both the amd64 ISO and
-  the arm64+raspi image. Worth seeding as a separate OperatingSystem for
-  red-team / lab workflows.
 - **Armbian** — generic arm64 / armhf SBC distro; would slot under
   `generic-arm64` or per-board HardwareTargets.
 - **Alpine Linux** — embedded use cases; HAOS-style appliance pattern
@@ -154,22 +174,25 @@ aren't in the catalog yet.
 
 ## OS × hardware support matrix
 
-| OS         | rpi3 | rpi4 | rpi5 | pc-amd64 | generic-arm64 | vm-qemu | vm-hyperv | vm-virtualbox | beaglebone (black/blue) | jetson-nano |
-| ---------- | :--: | :--: | :--: | :------: | :-----------: | :-----: | :-------: | :-----------: | :---------------------: | :---------: |
-| Batocera   | —    | ✓   | ✓   | ✓       | —             | —      | —        | —            | —                       | —           |
-| Ubuntu     | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓¹    | ✓¹      | ✓¹          | —                       | —           |
-| Debian     | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓¹    | ✓¹      | ✓¹          | ✓ (Bookworm armhf)     | —           |
-| RaspiOS    | ✓   | ✓   | ✓   | —        | —             | —      | —        | —            | —                       | —           |
-| HAOS       | —    | ✓   | ✓   | ✓       | —             | —      | —        | —            | —                       | —           |
-| Omarchy    | —    | —    | —    | ✓ (desktop ISO) | —    | —      | —        | —            | —                       | —           |
-| Pop!_OS    | —    | —    | —    | ✓ (intel + nvidia) | — | —      | —        | —            | —                       | —           |
-| L4T        | —    | —    | —    | —        | —             | —      | —        | —            | —                       | ✓           |
-| Kali       | (✓²) | (✓²) | —    | (✓²)    | —             | —      | —        | —            | —                       | —           |
+`rpi*` = Raspberry Pi 3/4/5, `bb-*` = BeagleBone Black/Blue,
+`jetson-*` = NVIDIA Jetson Nano / Xavier NX / Orin Nano,
+`vm-*` = QEMU/Hyper-V/VirtualBox.
+
+| OS           | rpi3 | rpi4 | rpi5 | pc-amd64 | generic-arm64 | vm-* | bb-* | jetson-nano | jetson-xavier-nx | jetson-orin-nano |
+| ------------ | :--: | :--: | :--: | :------: | :-----------: | :--: | :--: | :---------: | :--------------: | :--------------: |
+| Batocera     | ✓   | ✓   | ✓   | ✓       | —             | —   | —   | —           | —                | —                |
+| Ubuntu       | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓¹ | —   | —           | —                | —                |
+| Debian       | —    | ✓   | ✓   | ✓       | ✓ (server)   | ✓¹ | ✓ (Bookworm armhf) | — | —              | —                |
+| RaspiOS      | ✓   | ✓   | ✓   | —        | —             | —   | —   | —           | —                | —                |
+| HAOS         | —    | ✓   | ✓   | ✓       | —             | —   | —   | —           | —                | —                |
+| Omarchy      | —    | —    | —    | ✓ (desktop)   | —        | —   | —   | —           | —                | —                |
+| Pop!_OS      | —    | —    | —    | ✓ (intel+nvidia) | —    | —   | —   | —           | —                | —                |
+| L4T          | —    | —    | —    | —        | —             | —   | —   | ✓ r32.7    | ✓ r35.6         | ✓ r36.4         |
+| Kali         | —    | ✓   | ✓   | ✓       | —             | —   | —   | —           | —                | —                |
+| Proxmox VE   | —    | —    | —    | ✓ (ISO)        | —       | —   | —   | —           | —                | —                |
 
 ¹ VM targets are server-only; desktop-in-VM is the user installing the
 desktop ISO themselves.
-² Aspirational — Kali ships both amd64 ISOs and arm64+raspi images;
-trivially seedable when needed.
 
 ## Adding a new platform
 
