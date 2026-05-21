@@ -61,6 +61,14 @@ OS_LOGOS: dict[str, dict[str, str]] = {
         "svg": "https://cdn.simpleicons.org/proxmox/e57000",
         "accent": "#e57000",
     },
+    "esphome": {
+        "svg": "https://cdn.simpleicons.org/esphome/000000",
+        "accent": "#000000",
+    },
+    "windows": {
+        "svg": "https://cdn.simpleicons.org/windows11/0078d4",
+        "accent": "#0078d4",
+    },
 }
 
 
@@ -302,8 +310,70 @@ def _os_logo(slug: str) -> dict[str, str]:
     }
 
 
+# Recipe-to-use-case mapping. Single source of truth for the bake UI's
+# top-level grouping — keep this list in sync as new recipes land.
+RECIPE_USE_CASE: dict[str, str] = {
+    "batocera-handheld":   "retro",
+    "batocera-arcade":     "retro",
+    "batocera-notebook":   "retro",
+    "ubuntu-desktop":      "desktop",
+    "omarchy-desktop":     "desktop",
+    "popos-workstation":   "desktop",
+    "ubuntu-docker":       "server",
+    "ubuntu-kube":         "server",
+    "debian-server":       "server",
+    "raspios-headless":    "iot",
+    "haos-appliance":      "iot",
+    "kali-pentest":        "security",
+    "l4t-jetson":          "edge_ai",
+    "ardupilot-rover":     "robotics",
+    "ardupilot-copter":    "robotics",
+    "esphome-laskakit-esplan": "firmware",
+    "esphome-bluetooth-proxy": "firmware",
+    "esphome-vindriktning":    "firmware",
+    "esphome-custom":          "firmware",
+    "windows-workstation": "desktop",
+    "proxmox-bare-metal":  "hypervisor",
+}
+
+USE_CASES: list[tuple[str, str, str, str]] = [
+    # (key, label, tagline, accent)
+    ("retro",      "Retro gaming",
+     "Handhelds, arcade cabinets, retro laptops — Batocera presets.",
+     "#1f6feb"),
+    ("desktop",    "Desktop / workstation",
+     "GNOME, Hyprland, Pop!_OS — daily-driver workstations.",
+     "#e95420"),
+    ("server",     "Server",
+     "Headless Linux for fleet roles — Docker hosts, Kubernetes nodes, "
+     "general servers.",
+     "#0ea5e9"),
+    ("iot",        "IoT / appliance",
+     "Single-purpose images for home automation and headless Pis.",
+     "#18bcf2"),
+    ("hypervisor", "Bare-metal hypervisor",
+     "Proxmox VE for fleet hosts.",
+     "#e57000"),
+    ("security",   "Pentest / security",
+     "Kali workstation, ready for red-team use.",
+     "#557c94"),
+    ("edge_ai",    "Edge AI",
+     "NVIDIA Jetson SDK images for on-device inference.",
+     "#76b900"),
+    ("robotics",   "Robotics / autopilot",
+     "ArduPilot stacks on the BeagleBone Blue — rovers, drones, surface "
+     "vehicles.",
+     "#10b981"),
+    ("firmware",   "Microcontroller firmware",
+     "ESPHome configs for ESP32 / ESP8266 devices — Home Assistant "
+     "integration, BLE proxies, sensor turnkeys. Flash to the chip "
+     "directly from the browser.",
+     "#000000"),
+]
+
+
 def bake_index(request: HttpRequest) -> HttpResponse:
-    """Recipe-picker page — role templates as cards."""
+    """Recipe-picker page — role templates grouped by use case."""
     os_filter = request.GET.get("os") or ""
 
     qs = (
@@ -315,10 +385,10 @@ def bake_index(request: HttpRequest) -> HttpResponse:
     if os_filter:
         qs = qs.filter(operating_system__slug=os_filter)
 
-    cards = []
+    cards_by_use_case: dict[str, list[dict]] = {}
     for r in qs:
         logo = _os_logo(r.operating_system.slug)
-        cards.append({
+        card = {
             "slug": r.slug,
             "name": r.name,
             "summary": r.summary,
@@ -332,10 +402,37 @@ def bake_index(request: HttpRequest) -> HttpResponse:
                 {"slug": h.slug, "name": h.name}
                 for h in r.supported_hardware.all()
             ],
+        }
+        use_case = RECIPE_USE_CASE.get(r.slug, "other")
+        cards_by_use_case.setdefault(use_case, []).append(card)
+
+    sections: list[dict] = []
+    for key, label, tagline, accent in USE_CASES:
+        cards = cards_by_use_case.get(key, [])
+        if not cards:
+            continue
+        sections.append({
+            "key": key,
+            "label": label,
+            "tagline": tagline,
+            "accent": accent,
+            "cards": cards,
+            "n_cards": len(cards),
+        })
+    # Anything not in USE_CASES falls through to a final "Other" bucket.
+    if "other" in cards_by_use_case:
+        sections.append({
+            "key": "other",
+            "label": "Other",
+            "tagline": "Recipes without a use-case mapping yet.",
+            "accent": "#525252",
+            "cards": cards_by_use_case["other"],
+            "n_cards": len(cards_by_use_case["other"]),
         })
 
     return render(request, "bake_index.html", {
-        "cards": cards,
+        "sections": sections,
+        "total_recipes": sum(s["n_cards"] for s in sections),
         "all_operating_systems": OperatingSystem.objects.filter(
             is_active=True, recipes__status=Recipe.Status.ACTIVE,
         ).distinct().order_by("name"),

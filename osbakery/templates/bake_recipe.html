@@ -192,6 +192,44 @@
         </button>
       </div>
     </form>
+
+    {% if os_slug == "esphome" %}
+    <aside class="mt-10 p-6 rounded-2xl border border-stone-200 bg-stone-900 text-stone-100">
+      <h3 class="text-base font-semibold flex items-center gap-2">
+        <span>⚡</span>
+        Flash this device from your browser
+      </h3>
+      <p class="mt-2 text-sm text-stone-300">
+        Once the bake finishes, the compiled <code class="font-mono">.bin</code>
+        is available as an ESP Web Tools manifest. Plug your ESP into USB, hit
+        the button below, and the browser flashes the chip via WebSerial —
+        no espflash / esphome CLI install needed.
+      </p>
+      <script type="module"
+              src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+      <esp-web-install-button
+          manifest="https://web.esphome.io/manifest.json"
+          class="mt-4 inline-flex">
+        <button slot="activate"
+                class="px-5 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400
+                       text-stone-900 font-medium">
+          Connect &amp; flash →
+        </button>
+        <span slot="unsupported" class="text-sm text-stone-400">
+          Your browser doesn't support WebSerial. Use Chrome / Edge on
+          desktop, or fall back to <code class="font-mono">esphome run</code>.
+        </span>
+        <span slot="not-allowed" class="text-sm text-stone-400">
+          os-bakery isn't on HTTPS — WebSerial needs a secure origin. Open
+          this URL on the production domain.
+        </span>
+      </esp-web-install-button>
+      <p class="mt-3 text-xs text-stone-500">
+        Placeholder manifest points at <code class="font-mono">web.esphome.io</code>
+        until the orchestrator wires up local per-build manifests.
+      </p>
+    </aside>
+    {% endif %}
     {% endif %}
 
     <footer class="border-t border-stone-200 py-6 text-xs text-stone-500 flex justify-between font-mono">

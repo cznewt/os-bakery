@@ -79,6 +79,9 @@ ARCHITECTURES: list[ArchSeed] = [
     ArchSeed("arm64", "ARM 64-bit (aarch64)", "arm", 64),
     ArchSeed("armhf", "ARM 32-bit hard-float (armv7l)", "arm", 32),
     ArchSeed("amd64", "x86 64-bit (x86_64)", "x86", 64),
+    # Microcontroller architectures
+    ArchSeed("xtensa", "Tensilica Xtensa", "other", 32),
+    ArchSeed("riscv32", "RISC-V 32-bit", "riscv", 32),
 ]
 
 HARDWARE_TARGETS: list[TargetSeed] = [
@@ -138,6 +141,22 @@ HARDWARE_TARGETS: list[TargetSeed] = [
                notes="Clamshell flip-style handheld (per Batocera download page)."),
     TargetSeed("pocket-5", "Retroid Pocket 5", "arm64", "uboot",
                notes="Retroid Pocket 5 handheld (per Batocera download page)."),
+    # ---- ESPHome microcontroller targets -------------------------------
+    TargetSeed("esp32", "Espressif ESP32", "xtensa", "custom",
+               soc="ESP32 (Xtensa LX6, 240 MHz dual-core, Wi-Fi + BLE)",
+               notes="Original ESP32 generation."),
+    TargetSeed("esp32-s3", "Espressif ESP32-S3", "xtensa", "custom",
+               soc="ESP32-S3 (Xtensa LX7, 240 MHz dual-core, USB-OTG)",
+               notes="USB-OTG, AI accelerator vector instructions, more PSRAM."),
+    TargetSeed("esp32-c3", "Espressif ESP32-C3", "riscv32", "custom",
+               soc="ESP32-C3 (RISC-V, 160 MHz single-core, BLE5)",
+               notes="Low-cost RISC-V chip, BLE 5 + Wi-Fi 4."),
+    TargetSeed("esp32-c6", "Espressif ESP32-C6", "riscv32", "custom",
+               soc="ESP32-C6 (RISC-V, 160 MHz, 802.15.4 + Wi-Fi 6)",
+               notes="Adds Thread / Zigbee 802.15.4 radio."),
+    TargetSeed("esp8266", "Espressif ESP8266", "xtensa", "custom",
+               soc="ESP8266 (Xtensa LX106, 80 MHz, Wi-Fi only)",
+               notes="Legacy; many Shelly / Sonoff / Wemos boards."),
 ]
 
 OPERATING_SYSTEMS: list[OSSeed] = [
@@ -174,6 +193,14 @@ OPERATING_SYSTEMS: list[OSSeed] = [
            homepage="https://www.proxmox.com/en/proxmox-virtual-environment",
            summary="Bare-metal Debian-based KVM + LXC hypervisor "
                    "(`proxmox-ve_*.iso`). amd64 only."),
+    OSSeed("esphome", "ESPHome", "Open Home Foundation", "iot",
+           homepage="https://esphome.io",
+           summary="YAML-driven firmware compiler for ESP32 / ESP8266 — "
+                   "ships flashable .bin images per device profile."),
+    OSSeed("windows", "Windows", "Microsoft", "desktop",
+           homepage="https://www.microsoft.com/windows",
+           summary="Microsoft Windows. Installer ISOs come with autounattend.xml "
+                   "preseed so the bake yields a one-touch install image."),
 ]
 
 RELEASES: list[ReleaseSeed] = [
@@ -216,6 +243,16 @@ RELEASES: list[ReleaseSeed] = [
     # Proxmox VE — 9.x is the current major; 8.3 kept for legacy clusters.
     ReleaseSeed("proxmox-ve", "8.3", "stable"),
     ReleaseSeed("proxmox-ve", "9.1", "stable", is_default=True),
+    # ESPHome — one firmware-toolchain release per ESPHome version. Keep
+    # the current series + last LTS-ish; ESPHome doesn't publish LTS,
+    # but device YAMLs occasionally pin older majors.
+    ReleaseSeed("esphome", "2025.11.0", "stable"),
+    ReleaseSeed("esphome", "2026.4.0", "stable", is_default=True),
+    # Windows — Microsoft's installer ISOs; gated downloads, so URLs are
+    # placeholders pointing at the download portal. Recipes preseed
+    # autounattend.xml so the bake produces a one-touch install ISO.
+    ReleaseSeed("windows", "11", "stable", codename="24H2", is_default=True),
+    ReleaseSeed("windows", "10", "stable", codename="22H2"),
 ]
 
 
@@ -274,6 +311,18 @@ _KALI_RPI = "https://kali.download/arm-images/kali-{release}/kali-linux-{release
 
 # Proxmox VE — single amd64 bare-metal installer ISO per point release.
 _PROXMOX_VE = "https://download.proxmox.com/iso/proxmox-ve_{release}-1.iso"
+
+# ESPHome firmware factory — per ESPHome release + chip target, the project's
+# build pipeline emits factory .bin images. Recipes layer device YAMLs on
+# top at compile time; the upstream image is the chip-specific runtime.
+_ESPHOME_FACTORY = (
+    "https://github.com/esphome/esphome/releases/download/{release}/"
+    "esphome-{release}-factory-{chip}.bin"
+)
+
+# Windows — Microsoft's signed download URLs expire; point at the portal
+# and let the orchestrator's downloader follow the redirect chain.
+_WINDOWS_ISO = "https://www.microsoft.com/software-download/windows{release}"
 
 # RaspiOS — date-stamped folder + matching filename. Codename is the
 # Debian series (bullseye, bookworm, …) lowercased.
@@ -409,6 +458,24 @@ def _images() -> list[ImageSeed]:
         rows.append(ImageSeed("proxmox-ve", pve_release, "stable",
                               "pc-amd64", "",
                               _PROXMOX_VE.format(release=pve_release), "iso"))
+
+    # ESPHome — one factory bin per chip target per release.
+    for esphome_release in ("2025.11.0", "2026.4.0"):
+        for chip in ("esp32", "esp32-s3", "esp32-c3", "esp32-c6", "esp8266"):
+            rows.append(ImageSeed(
+                "esphome", esphome_release, "stable", chip, "",
+                _ESPHOME_FACTORY.format(release=esphome_release, chip=chip),
+                "img",
+            ))
+
+    # Windows — same ISO usable on bare-metal pc-amd64 and the three VM
+    # hypervisor targets (Hyper-V / VirtualBox / QEMU all install from it).
+    for win_release in ("11", "10"):
+        for target in ("pc-amd64", "vm-qemu", "vm-hyperv", "vm-virtualbox"):
+            rows.append(ImageSeed(
+                "windows", win_release, "stable", target, "",
+                _WINDOWS_ISO.format(release=win_release), "iso",
+            ))
 
     # RaspiOS — one image per arm64 variant per dated release; three Pi
     # targets share each image.

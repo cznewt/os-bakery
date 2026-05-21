@@ -13,7 +13,7 @@ from typing import Any
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from catalog.models import HardwareTarget, OperatingSystem
+from catalog.models import HardwareTarget, OperatingSystem, OSRelease
 from recipes.models import Recipe, RecipeOption, RecipeVersion
 
 
@@ -148,6 +148,471 @@ RECIPES: list[dict[str, Any]] = [
              "kind": "string", "sort_order": 40},
         ],
     },
+    # ---- single-role recipes for the remaining OSes ------------------
+    {
+        "slug": "raspios-headless",
+        "name": "RaspiOS · Headless",
+        "summary": "Raspberry Pi OS Lite preconfigured for headless / IoT "
+                   "use — SSH enabled, optional Wi-Fi, sane locale defaults.",
+        "os_slug": "raspios",
+        "hardware_slugs": ["rpi3", "rpi4", "rpi5"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "raspios.headless"],
+        "pillar_overrides": {"variant": "lite", "role": "raspios-headless"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "required": True, "default": "raspi-1", "sort_order": 10},
+            {"key": "user_name", "label": "Username", "kind": "string",
+             "required": True, "default": "pi", "sort_order": 20},
+            {"key": "user_password", "label": "User password", "kind": "secret",
+             "required": True, "sort_order": 30},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "help_text": "One key per line.",
+             "kind": "ssh_key", "sort_order": 40},
+            {"key": "wifi_ssid", "label": "Wi-Fi SSID", "kind": "string",
+             "sort_order": 50},
+            {"key": "wifi_psk", "label": "Wi-Fi password", "kind": "secret",
+             "sort_order": 60},
+        ],
+    },
+    {
+        "slug": "haos-appliance",
+        "name": "Home Assistant · Appliance",
+        "summary": "HAOS preconfigured for first-boot — Wi-Fi credentials "
+                   "baked into the config partition, SSH add-on key seeded.",
+        "os_slug": "haos",
+        "hardware_slugs": ["rpi4", "rpi5", "pc-amd64"],
+        "version": "1.0.0",
+        "salt_states": ["haos.base", "haos.network", "haos.ssh"],
+        "pillar_overrides": {"role": "haos-appliance"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "default": "homeassistant", "sort_order": 10},
+            {"key": "wifi_ssid", "label": "Wi-Fi SSID",
+             "help_text": "Optional — leave blank for Ethernet-only.",
+             "kind": "string", "sort_order": 20},
+            {"key": "wifi_psk", "label": "Wi-Fi password", "kind": "secret",
+             "sort_order": 30},
+            {"key": "wifi_country", "label": "Wi-Fi country code",
+             "kind": "string", "default": "DE", "sort_order": 40},
+            {"key": "ssh_authorized_keys",
+             "label": "SSH add-on authorized keys",
+             "help_text": "Pre-seeded into the HA SSH add-on's authorized_keys "
+                          "(install the add-on after first boot).",
+             "kind": "ssh_key", "sort_order": 50},
+        ],
+    },
+    {
+        "slug": "debian-server",
+        "name": "Debian · Server",
+        "summary": "Generic Debian server — minimal base, salt-minion "
+                   "ready, joins the fleet as a `linux` role.",
+        "os_slug": "debian",
+        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "generic-arm64",
+                           "vm-qemu", "vm-hyperv", "vm-virtualbox",
+                           "beaglebone-black", "beaglebone-blue"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users", "base.hardening"],
+        "pillar_overrides": {"role": "debian-server", "fleet_role": "linux"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "required": True, "default": "debian-1", "sort_order": 10},
+            {"key": "user_name", "label": "Admin user", "kind": "string",
+             "required": True, "default": "ops", "sort_order": 20},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "help_text": "Required — server image has no console password.",
+             "kind": "ssh_key", "required": True, "sort_order": 30},
+            {"key": "salt_master", "label": "Salt master (optional)",
+             "help_text": "If set, salt-minion is installed and pointed "
+                          "at this master.",
+             "kind": "string", "sort_order": 40},
+        ],
+    },
+    {
+        "slug": "omarchy-desktop",
+        "name": "Omarchy · Desktop",
+        "summary": "DHH's curated Arch + Hyprland desktop with your user "
+                   "account and dotfiles preconfigured.",
+        "os_slug": "omarchy",
+        "hardware_slugs": ["pc-amd64"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users"],
+        "pillar_overrides": {"role": "omarchy-desktop"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "required": True, "default": "omarchy", "sort_order": 10},
+            {"key": "user_name", "label": "Username", "kind": "string",
+             "required": True, "sort_order": 20},
+            {"key": "user_password", "label": "User password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "sort_order": 40},
+        ],
+    },
+    {
+        "slug": "popos-workstation",
+        "name": "Pop!_OS · Workstation",
+        "summary": "System76's Pop!_OS as a development workstation — "
+                   "Intel or NVIDIA flavour, devtools preselected.",
+        "os_slug": "popos",
+        "hardware_slugs": ["pc-amd64"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users", "ubuntu.base"],
+        "pillar_overrides": {"role": "popos-workstation"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "required": True, "default": "popos-1", "sort_order": 10},
+            {"key": "user_name", "label": "Username", "kind": "string",
+             "required": True, "sort_order": 20},
+            {"key": "user_password", "label": "User password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "sort_order": 40},
+        ],
+    },
+    {
+        "slug": "l4t-jetson",
+        "name": "Jetson · L4T",
+        "summary": "NVIDIA Jetson SDK image — hostname / SSH / user "
+                   "preconfigured. Pick the right Tegra family in step 1.",
+        "os_slug": "l4t",
+        "hardware_slugs": ["jetson-nano", "jetson-xavier-nx",
+                           "jetson-orin-nano"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users"],
+        "pillar_overrides": {"role": "l4t-jetson"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "required": True, "default": "jetson-1", "sort_order": 10},
+            {"key": "user_name", "label": "Username", "kind": "string",
+             "required": True, "default": "nvidia", "sort_order": 20},
+            {"key": "user_password", "label": "User password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "sort_order": 40},
+        ],
+    },
+    {
+        "slug": "kali-pentest",
+        "name": "Kali · Pentest workstation",
+        "summary": "Kali Linux preset for red-team work — username and "
+                   "SSH keys preconfigured. amd64 ISO + arm64 Pi images.",
+        "os_slug": "kali",
+        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users"],
+        "pillar_overrides": {"role": "kali-pentest"},
+        "options": [
+            {"key": "hostname", "label": "Hostname", "kind": "string",
+             "required": True, "default": "kali-1", "sort_order": 10},
+            {"key": "user_name", "label": "Username", "kind": "string",
+             "required": True, "default": "kali", "sort_order": 20},
+            {"key": "user_password", "label": "User password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "sort_order": 40},
+        ],
+    },
+    # ---- Windows ---------------------------------------------------
+    {
+        "slug": "windows-workstation",
+        "name": "Windows · Workstation",
+        "summary": "Windows 11 with an autounattend.xml preseed — locale, "
+                   "timezone, default user, and product key baked in; "
+                   "boots straight into the desktop on first start.",
+        "os_slug": "windows",
+        "hardware_slugs": ["pc-amd64", "vm-qemu", "vm-hyperv", "vm-virtualbox"],
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {"role": "windows-workstation"},
+        "options": [
+            {"key": "hostname", "label": "Computer name", "kind": "string",
+             "required": True, "default": "WIN-1", "sort_order": 10,
+             "help_text": "Max 15 chars; Windows NetBIOS limit."},
+            {"key": "user_name", "label": "User account", "kind": "string",
+             "required": True, "default": "newt", "sort_order": 20},
+            {"key": "user_password", "label": "User password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "locale", "label": "Locale", "kind": "choice",
+             "default": "en-US", "sort_order": 40,
+             "choices": [
+                 {"value": "en-US", "label": "English (United States)"},
+                 {"value": "en-GB", "label": "English (United Kingdom)"},
+                 {"value": "cs-CZ", "label": "Czech (Czechia)"},
+                 {"value": "de-DE", "label": "German (Germany)"},
+                 {"value": "fr-FR", "label": "French (France)"},
+             ]},
+            {"key": "timezone", "label": "Time zone",
+             "kind": "string", "default": "Central European Standard Time",
+             "sort_order": 50,
+             "help_text": "Windows-format tz name, e.g. "
+                          "`Central European Standard Time`."},
+            {"key": "product_key", "label": "Product key (optional)",
+             "kind": "secret", "sort_order": 60,
+             "help_text": "Blank → 30-day trial; provide a Pro / Enterprise "
+                          "key for activated install."},
+            {"key": "edition", "label": "Edition", "kind": "choice",
+             "default": "pro", "sort_order": 70,
+             "choices": [
+                 {"value": "home", "label": "Home"},
+                 {"value": "pro", "label": "Pro"},
+                 {"value": "enterprise", "label": "Enterprise"},
+                 {"value": "education", "label": "Education"},
+             ]},
+        ],
+    },
+    # ---- ESPHome — firmware images for ESP32 / ESP8266 devices ----
+    # Each recipe maps to a packages/device/<vendor>/<device>.yaml file in
+    # https://github.com/Craftama/esphome-models (cloned into BUILD_WORK_ROOT
+    # at compile time by the orchestrator). Options become substitutions.
+    {
+        "slug": "esphome-laskakit-esplan",
+        "name": "ESPHome · LaskaKit ESPlan",
+        "summary": "LaskaKit ESPlan (ESP32 + Ethernet) preset — Home "
+                   "Assistant API, optional I²C sensor bus, BLE proxy.",
+        "os_slug": "esphome",
+        "hardware_slugs": ["esp32"],
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {
+            "role": "esphome-laskakit-esplan",
+            "esphome": {
+                "package": "packages/device/laskakit/esplan.yaml",
+                "models_repo": "https://github.com/Craftama/esphome-models",
+            },
+        },
+        "options": [
+            {"key": "device_name", "label": "Device name (mDNS)",
+             "kind": "string", "required": True,
+             "default": "esplan-1", "sort_order": 10,
+             "help_text": "Becomes the device's network hostname + "
+                          "ESPHome `substitutions.device_name`."},
+            {"key": "name_prefix", "label": "Friendly name prefix",
+             "kind": "string", "default": "Esplan",
+             "sort_order": 20},
+            {"key": "network_address", "label": "Static IP (optional)",
+             "kind": "string", "sort_order": 30,
+             "help_text": "Leave blank for DHCP."},
+            {"key": "ha_api_key", "label": "Home Assistant API key",
+             "kind": "secret", "required": True, "sort_order": 40,
+             "help_text": "32-byte base64 — `esphome auth gen-key`."},
+            {"key": "include_ble_proxy", "label": "BLE proxy",
+             "kind": "boolean", "default": True, "sort_order": 50,
+             "help_text": "Use the device as a Bluetooth proxy for Home Assistant."},
+        ],
+    },
+    {
+        "slug": "esphome-bluetooth-proxy",
+        "name": "ESPHome · BLE proxy",
+        "summary": "Minimal ESP32 firmware that bridges nearby Bluetooth LE "
+                   "advertisements to Home Assistant — great for spreading "
+                   "presence sensors around the house.",
+        "os_slug": "esphome",
+        "hardware_slugs": ["esp32", "esp32-c3", "esp32-c6", "esp32-s3"],
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {
+            "role": "esphome-bluetooth-proxy",
+            "esphome": {
+                "package": "packages/network/bluetooth/pine64.yaml",
+                "models_repo": "https://github.com/Craftama/esphome-models",
+            },
+        },
+        "options": [
+            {"key": "device_name", "label": "Device name (mDNS)",
+             "kind": "string", "required": True,
+             "default": "ble-proxy-1", "sort_order": 10},
+            {"key": "wifi_ssid", "label": "Wi-Fi SSID", "kind": "string",
+             "required": True, "sort_order": 20},
+            {"key": "wifi_psk", "label": "Wi-Fi password", "kind": "secret",
+             "required": True, "sort_order": 30},
+            {"key": "ha_api_key", "label": "Home Assistant API key",
+             "kind": "secret", "required": True, "sort_order": 40},
+        ],
+    },
+    {
+        "slug": "esphome-vindriktning",
+        "name": "ESPHome · IKEA Vindriktning",
+        "summary": "Turn the IKEA Vindriktning air-quality sensor into a "
+                   "smart device — adds PM2.5 reporting and an RGB status "
+                   "LED to your Home Assistant.",
+        "os_slug": "esphome",
+        "hardware_slugs": ["esp32", "esp8266"],
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {
+            "role": "esphome-vindriktning",
+            "esphome": {
+                "package": "packages/device/laskakit/vindriktning.yaml",
+                "models_repo": "https://github.com/Craftama/esphome-models",
+            },
+        },
+        "options": [
+            {"key": "device_name", "label": "Device name (mDNS)",
+             "kind": "string", "required": True,
+             "default": "vindriktning-1", "sort_order": 10},
+            {"key": "name_prefix", "label": "Friendly name prefix",
+             "kind": "string", "default": "Bedroom Vindriktning",
+             "sort_order": 20},
+            {"key": "wifi_ssid", "label": "Wi-Fi SSID", "kind": "string",
+             "required": True, "sort_order": 30},
+            {"key": "wifi_psk", "label": "Wi-Fi password", "kind": "secret",
+             "required": True, "sort_order": 40},
+            {"key": "ha_api_key", "label": "Home Assistant API key",
+             "kind": "secret", "required": True, "sort_order": 50},
+            {"key": "include_leds", "label": "Use upgraded LED ring",
+             "kind": "boolean", "default": False, "sort_order": 60,
+             "help_text": "Pick the `vindriktning-leds.yaml` package "
+                          "instead of the plain one."},
+        ],
+    },
+    {
+        "slug": "esphome-custom",
+        "name": "ESPHome · Custom YAML",
+        "summary": "Bring your own ESPHome YAML — handy when the device "
+                   "isn't a preset in craftama/esphome-models yet.",
+        "os_slug": "esphome",
+        "hardware_slugs": ["esp32", "esp32-s3", "esp32-c3", "esp32-c6",
+                           "esp8266"],
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {
+            "role": "esphome-custom",
+            "esphome": {
+                "package": "",
+                "models_repo": "https://github.com/Craftama/esphome-models",
+            },
+        },
+        "options": [
+            {"key": "device_name", "label": "Device name", "kind": "string",
+             "required": True, "default": "esp-1", "sort_order": 10},
+            {"key": "yaml_url", "label": "ESPHome YAML URL (raw)",
+             "kind": "string", "required": True, "sort_order": 20,
+             "help_text": "Public URL to the YAML config (e.g. a gist or "
+                          "GitHub raw link)."},
+            {"key": "ha_api_key", "label": "Home Assistant API key",
+             "kind": "secret", "sort_order": 30,
+             "help_text": "Optional — required if the YAML enables the "
+                          "ESPHome → HA API."},
+        ],
+    },
+    # ---- Robotics — ArduPilot on the BeagleBone Blue --------------
+    {
+        "slug": "ardupilot-rover",
+        "name": "ArduPilot · Rover",
+        "summary": "ArduRover autopilot on BeagleBone Blue — ground vehicle "
+                   "preset (skid-steer / Ackermann), MAVLink telemetry to "
+                   "your ground station.",
+        "os_slug": "debian",
+        "hardware_slugs": ["beaglebone-blue"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users", "debian.ardupilot"],
+        "pillar_overrides": {"role": "ardupilot-rover",
+                             "fleet_role": "robotics",
+                             "ardupilot": {"vehicle": "rover"}},
+        "pinned_release": {"os_slug": "debian", "version": "12",
+                           "channel": "stable"},
+        "options": [
+            {"key": "hostname", "label": "Vehicle hostname", "kind": "string",
+             "required": True, "default": "rover-1", "sort_order": 10},
+            {"key": "frame_type", "label": "Frame type", "kind": "choice",
+             "default": "skid", "sort_order": 20,
+             "choices": [
+                 {"value": "skid", "label": "Skid-steer"},
+                 {"value": "ackermann", "label": "Ackermann (car-style)"},
+                 {"value": "omni", "label": "Omni (mecanum / holonomic)"},
+                 {"value": "boat", "label": "Boat / surface vehicle"},
+             ]},
+            {"key": "wifi_ssid", "label": "Telemetry Wi-Fi SSID",
+             "kind": "string", "sort_order": 30,
+             "help_text": "Companion / GCS network."},
+            {"key": "wifi_psk", "label": "Wi-Fi password", "kind": "secret",
+             "sort_order": 40},
+            {"key": "mavlink_gcs", "label": "Ground station endpoint",
+             "kind": "string", "sort_order": 50,
+             "help_text": "e.g. udp://192.168.1.100:14550 — MAVLink stream "
+                          "target."},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "required": True, "sort_order": 60},
+        ],
+    },
+    {
+        "slug": "ardupilot-copter",
+        "name": "ArduPilot · Copter",
+        "summary": "ArduCopter autopilot on BeagleBone Blue — multirotor "
+                   "preset (quad / hexa / octa), arming + failsafe defaults, "
+                   "MAVLink telemetry to your GCS.",
+        "os_slug": "debian",
+        "hardware_slugs": ["beaglebone-blue"],
+        "version": "1.0.0",
+        "salt_states": ["base.locale", "base.users", "debian.ardupilot"],
+        "pillar_overrides": {"role": "ardupilot-copter",
+                             "fleet_role": "robotics",
+                             "ardupilot": {"vehicle": "copter"}},
+        "pinned_release": {"os_slug": "debian", "version": "12",
+                           "channel": "stable"},
+        "options": [
+            {"key": "hostname", "label": "Vehicle hostname", "kind": "string",
+             "required": True, "default": "copter-1", "sort_order": 10},
+            {"key": "frame_class", "label": "Frame class", "kind": "choice",
+             "default": "quad", "sort_order": 20,
+             "choices": [
+                 {"value": "quad", "label": "Quad (4 motors)"},
+                 {"value": "hexa", "label": "Hexa (6 motors)"},
+                 {"value": "octa", "label": "Octa (8 motors)"},
+                 {"value": "y6", "label": "Y6 (6 motors, coaxial)"},
+                 {"value": "tricopter", "label": "Tricopter"},
+                 {"value": "heli", "label": "Helicopter (single rotor)"},
+             ]},
+            {"key": "frame_geometry", "label": "Frame geometry",
+             "kind": "choice", "default": "x", "sort_order": 30,
+             "choices": [
+                 {"value": "x", "label": "X (default)"},
+                 {"value": "plus", "label": "+ (plus)"},
+                 {"value": "h", "label": "H"},
+                 {"value": "v", "label": "V"},
+             ]},
+            {"key": "wifi_ssid", "label": "Telemetry Wi-Fi SSID",
+             "kind": "string", "sort_order": 40},
+            {"key": "wifi_psk", "label": "Wi-Fi password", "kind": "secret",
+             "sort_order": 50},
+            {"key": "mavlink_gcs", "label": "Ground station endpoint",
+             "kind": "string", "sort_order": 60,
+             "help_text": "e.g. udp://192.168.1.100:14550."},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "required": True, "sort_order": 70},
+        ],
+    },
+    {
+        "slug": "proxmox-bare-metal",
+        "name": "Proxmox VE · Bare-metal",
+        "summary": "Proxmox VE installer with preseeded answers — boot it "
+                   "on a fresh server and it lands ready to join the fleet "
+                   "as a `pve` role.",
+        "os_slug": "proxmox-ve",
+        "hardware_slugs": ["pc-amd64"],
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {"role": "proxmox-bare-metal", "fleet_role": "pve"},
+        "options": [
+            {"key": "hostname", "label": "Node hostname", "kind": "string",
+             "required": True, "default": "pve-1", "sort_order": 10},
+            {"key": "domain", "label": "Domain", "kind": "string",
+             "default": "prg.newt.cz", "sort_order": 20},
+            {"key": "root_password", "label": "root password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "ssh_authorized_keys", "label": "SSH authorized keys",
+             "kind": "ssh_key", "required": True, "sort_order": 40},
+            {"key": "static_ip", "label": "Static IP (optional)",
+             "help_text": "e.g. 10.0.0.10/24. Blank → DHCP.",
+             "kind": "string", "sort_order": 50},
+            {"key": "gateway", "label": "Default gateway", "kind": "string",
+             "sort_order": 60},
+            {"key": "cluster_endpoint", "label": "Cluster master to join",
+             "help_text": "Optional — IP:port of an existing PVE node.",
+             "kind": "string", "sort_order": 70},
+        ],
+    },
     {
         "slug": "ubuntu-kube",
         "name": "Ubuntu · Kubernetes node",
@@ -230,6 +695,19 @@ class Command(BaseCommand):
                     slug__in=spec["hardware_slugs"]
                 )
                 recipe.supported_hardware.set(targets)
+
+                # Optional `pinned_release` — recipes that only work against
+                # a specific OS release (BeagleBone Blue Debian Bookworm, …).
+                pin = spec.get("pinned_release")
+                if pin:
+                    pin_release = OSRelease.objects.filter(
+                        operating_system__slug=pin["os_slug"],
+                        version=pin["version"],
+                        channel=pin["channel"],
+                    ).first()
+                    if pin_release and recipe.pinned_release_id != pin_release.id:
+                        recipe.pinned_release = pin_release
+                        recipe.save(update_fields=["pinned_release"])
 
                 version, v_created = RecipeVersion.objects.get_or_create(
                     recipe=recipe, version=spec["version"],

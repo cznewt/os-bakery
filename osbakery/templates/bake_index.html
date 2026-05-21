@@ -27,16 +27,31 @@
       </a>
       <h1 class="mt-3 text-3xl md:text-4xl font-bold tracking-tight">Bake</h1>
       <p class="mt-2 text-stone-600 max-w-2xl">
-        Pick a role template, fill in the device + options, get a download
-        link. Each recipe layers Salt states on top of the matching base
-        image at build time.
+        Pick a role template — they're grouped by what you're trying to build.
+        Each recipe layers Salt customisations on the matching base image,
+        injects your hostname / Wi-Fi / SSH keys, and (where applicable)
+        writes a fleet-role grain so the master applies the right state
+        formulas on first contact. {{ total_recipes }} recipes total.
       </p>
 
       <nav class="mt-6 flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-stone-500 font-mono mr-1">Use case:</span>
+        {% for section in sections %}
+        <a href="#uc-{{ section.key }}"
+           class="px-3 py-1.5 rounded-md border border-stone-200 hover:bg-stone-100 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full" style="background: {{ section.accent }}"></span>
+          {{ section.label }}
+          <span class="text-stone-400">{{ section.n_cards }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+
+      <nav class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-stone-500 font-mono mr-1">OS:</span>
         <a href="/bake/"
            class="px-3 py-1.5 rounded-md border border-stone-200
                   {% if not selected_os %}bg-stone-900 text-white border-stone-900{% else %}hover:bg-stone-100{% endif %}">
-          All OSes
+          All
         </a>
         {% for os_ in all_operating_systems %}
         <a href="/bake/?os={{ os_.slug }}"
@@ -48,67 +63,81 @@
       </nav>
     </header>
 
-    <main class="pb-24">
-      <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {% for card in cards %}
-        <li>
-          <a href="/bake/{{ card.slug }}/"
-             class="card block bg-white rounded-2xl border border-stone-200 p-6 h-full flex flex-col gap-4"
-             style="border-top: 3px solid {{ card.accent }}">
+    <main class="pb-24 space-y-10">
+      {% for section in sections %}
+      <section id="uc-{{ section.key }}">
+        <header class="flex items-baseline gap-3 mb-4">
+          <span class="w-3 h-3 rounded-full" style="background: {{ section.accent }}"></span>
+          <h2 class="text-lg font-semibold">{{ section.label }}</h2>
+          <span class="text-sm text-stone-500">{{ section.tagline }}</span>
+        </header>
 
-            <header class="flex items-center gap-3">
-              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                   style="background-color: {{ card.accent }}15">
-                {% if card.logo_svg %}
-                  <img src="{{ card.logo_svg }}" alt="{{ card.os_name }}" class="w-8 h-8">
-                {% else %}
-                  <span class="text-xl font-bold font-mono" style="color: {{ card.accent }}">
-                    {{ card.logo_letter }}
-                  </span>
-                {% endif %}
-              </div>
-              <div class="min-w-0">
-                <h3 class="text-lg font-semibold tracking-tight truncate">{{ card.name }}</h3>
-                <p class="text-xs text-stone-500 font-mono">
-                  {{ card.os_slug }} · {{ card.os_kind|lower }}
-                </p>
-              </div>
-            </header>
+        <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {% for card in section.cards %}
+          <li>
+            <a href="/bake/{{ card.slug }}/"
+               class="card block bg-white rounded-2xl border border-stone-200 p-6 h-full flex flex-col gap-4"
+               style="border-top: 3px solid {{ section.accent }}">
 
-            <p class="text-sm text-stone-600 line-clamp-3">{{ card.summary }}</p>
+              <header class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                     style="background-color: {{ card.accent }}15">
+                  {% if card.logo_svg %}
+                    <img src="{{ card.logo_svg }}" alt="{{ card.os_name }}" class="w-8 h-8">
+                  {% else %}
+                    <span class="text-xl font-bold font-mono" style="color: {{ card.accent }}">
+                      {{ card.logo_letter }}
+                    </span>
+                  {% endif %}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h3 class="text-lg font-semibold tracking-tight truncate">{{ card.name }}</h3>
+                  <p class="text-xs text-stone-500 font-mono">
+                    {{ card.os_slug }} · {{ card.os_kind|lower }}
+                  </p>
+                </div>
+                <span class="text-[10px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap uppercase tracking-wider"
+                      style="color: {{ section.accent }}; background: {{ section.accent }}15">
+                  {{ section.label }}
+                </span>
+              </header>
 
-            <div class="mt-auto pt-4 border-t border-stone-100">
-              <div class="text-[11px] uppercase tracking-wider text-stone-500 mb-2">
-                Devices ({{ card.hardware|length }})
-              </div>
-              <div class="flex flex-wrap gap-1">
-                {% for hw in card.hardware|slice:":6" %}
-                  <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
-                    {{ hw.slug }}
-                  </span>
-                {% endfor %}
-                {% if card.hardware|length > 6 %}
-                  <span class="text-[11px] font-mono px-1.5 py-0.5 text-stone-400">
-                    +{{ card.hardware|length|add:-6 }}
-                  </span>
-                {% endif %}
-              </div>
-            </div>
+              <p class="text-sm text-stone-600 line-clamp-3">{{ card.summary }}</p>
 
-            <div class="flex items-center justify-between -mt-2">
-              <span class="text-sm font-medium" style="color: {{ card.accent }}">
-                Bake →
-              </span>
-            </div>
-          </a>
-        </li>
-        {% empty %}
-        <li class="col-span-full text-center py-16 text-stone-500">
-          No recipes yet. Run
-          <code class="font-mono text-stone-700">python manage.py seed_recipes</code>.
-        </li>
-        {% endfor %}
-      </ul>
+              <div class="mt-auto pt-4 border-t border-stone-100">
+                <div class="text-[11px] uppercase tracking-wider text-stone-500 mb-2">
+                  Devices ({{ card.hardware|length }})
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  {% for hw in card.hardware|slice:":6" %}
+                    <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
+                      {{ hw.slug }}
+                    </span>
+                  {% endfor %}
+                  {% if card.hardware|length > 6 %}
+                    <span class="text-[11px] font-mono px-1.5 py-0.5 text-stone-400">
+                      +{{ card.hardware|length|add:-6 }}
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between -mt-2">
+                <span class="text-sm font-medium" style="color: {{ section.accent }}">
+                  Bake →
+                </span>
+              </div>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% empty %}
+      <div class="text-center py-16 text-stone-500">
+        No recipes yet. Run
+        <code class="font-mono text-stone-700">python manage.py seed_recipes</code>.
+      </div>
+      {% endfor %}
     </main>
 
     <footer class="border-t border-stone-200 py-8 text-xs text-stone-500 flex justify-between font-mono">
