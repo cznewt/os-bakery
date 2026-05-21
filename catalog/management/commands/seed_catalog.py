@@ -45,6 +45,7 @@ class TargetSeed(NamedTuple):
     boot_method: str
     soc: str = ""
     notes: str = ""
+    image_url: str = ""  # product photo URL (used by /devices/ cards)
 
 
 class OSSeed(NamedTuple):
@@ -86,11 +87,14 @@ ARCHITECTURES: list[ArchSeed] = [
 
 HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("rpi3", "Raspberry Pi 3", "arm64", "rpi", soc="BCM2837",
-               notes="Pi 3 B / 3B+ / 3A+. arm64-capable."),
+               notes="Pi 3 B / 3B+ / 3A+. arm64-capable.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Raspberry_Pi_3_B%2B_%2839906370335%29.png/500px-Raspberry_Pi_3_B%2B_%2839906370335%29.png"),
     TargetSeed("rpi4", "Raspberry Pi 4", "arm64", "rpi", soc="BCM2711",
-               notes="Pi 4 (1-8 GB) and Pi 400."),
+               notes="Pi 4 (1-8 GB) and Pi 400.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Raspberry_Pi_4_Model_B_-_Side.jpg/500px-Raspberry_Pi_4_Model_B_-_Side.jpg"),
     TargetSeed("rpi5", "Raspberry Pi 5", "arm64", "rpi", soc="BCM2712",
-               notes="Pi 5."),
+               notes="Pi 5.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Raspberry_Pi_5%2C_dorsal_view.jpg/500px-Raspberry_Pi_5%2C_dorsal_view.jpg"),
     TargetSeed("pc-amd64", "Generic x86_64 PC (UEFI)", "amd64", "uefi",
                notes="Laptops, mini PCs, NUC-class."),
     TargetSeed("generic-arm64", "Generic ARM64 server", "arm64", "uefi",
@@ -100,22 +104,27 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("vm-virtualbox", "Oracle VirtualBox", "amd64", "bios"),
     TargetSeed("beaglebone-black", "BeagleBone Black", "armhf", "uboot",
                soc="TI AM335x",
-               notes="1 GHz Cortex-A8. Boots from eMMC / SD. armhf only."),
+               notes="1 GHz Cortex-A8. Boots from eMMC / SD. armhf only.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Beagleboneblack.jpg/500px-Beagleboneblack.jpg"),
     TargetSeed("beaglebone-blue", "BeagleBone Blue", "armhf", "uboot",
                soc="TI AM335x",
                notes="Robotics-focused BeagleBone Black variant — adds IMU, "
-                     "barometer, motor drivers."),
+                     "barometer, motor drivers.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/BeagleBoneBlue.jpg/500px-BeagleBoneBlue.jpg"),
     TargetSeed("jetson-nano", "NVIDIA Jetson Nano", "arm64", "uboot",
                soc="Tegra X1",
                notes="L4T (Linux for Tegra) only — the Tegra kernel is "
                      "Ubuntu-based but not interchangeable with stock arm64. "
-                     "Last supported L4T: r32.7.x."),
+                     "Last supported L4T: r32.7.x.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Nvidia_Jetson_Nano_Developer_Kit.jpg/500px-Nvidia_Jetson_Nano_Developer_Kit.jpg"),
     TargetSeed("jetson-xavier-nx", "NVIDIA Jetson Xavier NX", "arm64", "uboot",
                soc="Tegra Xavier",
-               notes="L4T r35.x. Lower-power Xavier module for the dev kit."),
+               notes="L4T r35.x. Lower-power Xavier module for the dev kit.",
+               image_url="https://developer.nvidia.com/sites/default/files/akamai/embedded/images/jetsonXavierNX/jetson-xavier-nx-front_625.png"),
     TargetSeed("jetson-orin-nano", "NVIDIA Jetson Orin Nano", "arm64", "uboot",
                soc="Tegra Orin",
-               notes="Current Jetson dev kit (8 GB / 4 GB). L4T r36.x."),
+               notes="Current Jetson dev kit (8 GB / 4 GB). L4T r36.x.",
+               image_url="https://developer.nvidia.com/sites/default/files/akamai/embedded/images/jetsonOrinNX/jetson-orin-nano-dev-kit-2c50-D@2x.jpg"),
     # ---- Retro handhelds (Batocera per-device builds) -----------------
     TargetSeed("rg552", "Anbernic RG552", "arm64", "uboot",
                soc="Rockchip RK3399",
@@ -160,7 +169,8 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     # ---- ESP dev boards ------------------------------------------------
     TargetSeed("esp32-devkit", "Espressif ESP32-DevKitC", "xtensa", "custom",
                soc="ESP32 (Xtensa LX6)",
-               notes="Reference ESP32 dev board with USB-UART bridge."),
+               notes="Reference ESP32 dev board with USB-UART bridge.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/ESP32_Espressif_ESP-WROOM-32_Dev_Board.jpg/500px-ESP32_Espressif_ESP-WROOM-32_Dev_Board.jpg"),
     TargetSeed("esp32-s3-devkit", "Espressif ESP32-S3-DevKitC", "xtensa", "custom",
                soc="ESP32-S3 (Xtensa LX7)",
                notes="Reference ESP32-S3 dev board, USB-OTG ready."),
@@ -172,7 +182,8 @@ HARDWARE_TARGETS: list[TargetSeed] = [
                notes="Reference ESP32-C6 dev board with 802.15.4 radio."),
     TargetSeed("esp8266-nodemcu", "NodeMCU ESP8266", "xtensa", "custom",
                soc="ESP8266 (Xtensa LX106)",
-               notes="Classic NodeMCU dev board — ESP-12E module + USB-UART."),
+               notes="Classic NodeMCU dev board — ESP-12E module + USB-UART.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/NodeMCU_DEVKIT_1.0.jpg/500px-NodeMCU_DEVKIT_1.0.jpg"),
     # ---- Vendor devices (https://github.com/Craftama/esphome-models) ---
     TargetSeed("ai-thinker-esp32-cam", "AI-Thinker ESP32-CAM", "xtensa", "custom",
                soc="ESP32 (Xtensa LX6)",
@@ -215,7 +226,8 @@ HARDWARE_TARGETS: list[TargetSeed] = [
                      "iGrill v2 thermometer."),
     TargetSeed("wemos-d1-mini", "Wemos D1 mini", "xtensa", "custom",
                soc="ESP8266 (Xtensa LX106)",
-               notes="Tiny low-cost ESP8266 board — community staple."),
+               notes="Tiny low-cost ESP8266 board — community staple.",
+               image_url="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Wemos_D1_mini_top.jpg/500px-Wemos_D1_mini_top.jpg"),
 ]
 
 OPERATING_SYSTEMS: list[OSSeed] = [
@@ -653,8 +665,14 @@ class Command(BaseCommand):
                         boot_method=tseed.boot_method,
                         soc=tseed.soc,
                         notes=tseed.notes,
+                        image_url=tseed.image_url,
                     ),
                 )
+                # Refresh image_url even on existing rows — the seed is the
+                # source of truth for these.
+                if not created and obj.image_url != tseed.image_url:
+                    obj.image_url = tseed.image_url
+                    obj.save(update_fields=["image_url"])
                 target_by_slug[tseed.slug] = obj
                 report["target"] += 1
                 report["target+"] += int(created)

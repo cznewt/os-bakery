@@ -68,6 +68,13 @@ class HardwareTarget(TimestampedModel):
     soc = models.CharField(max_length=80, blank=True, help_text="System-on-chip, e.g. BCM2712")
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    image_url = models.URLField(
+        blank=True,
+        help_text=(
+            "Product photo (Wikipedia Commons, vendor CDN, ...). "
+            "Used on the /devices/ page; falls back to a letter avatar."
+        ),
+    )
 
     class Meta:
         ordering = ["architecture__slug", "slug"]

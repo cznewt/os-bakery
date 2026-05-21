@@ -212,6 +212,7 @@ def devices(request: HttpRequest) -> HttpResponse:
             "boot": t.boot_method,
             "soc": t.soc,
             "notes": t.notes,
+            "image_url": t.image_url,
             "is_active": t.is_active,
             "n_images": image_counts.get(t.id, 0),
             "oses": [
