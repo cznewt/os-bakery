@@ -1,4 +1,4 @@
-.PHONY: help install dev migrate makemigrations run shell test lint format superuser celery clean
+.PHONY: help install dev migrate makemigrations run shell test lint format superuser celery clean orm-diagram seed-catalog
 
 help:
 	@awk 'BEGIN{FS=":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -39,3 +39,27 @@ celery: ## Run a Celery worker for the builds queue
 clean: ## Remove caches and build intermediates
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache htmlcov .coverage
+
+seed-catalog: ## Populate Architecture / HardwareTarget / OperatingSystem / OSRelease / UpstreamImage rows
+	python manage.py seed_catalog
+
+orm-diagram: ## Regenerate docs/orm.{svg,png,dot} via the Docker base image
+	docker build --target base -t os-bakery-base .
+	docker run --rm -v $(CURDIR):/app -w /app \
+		-e DJANGO_SECRET_KEY=dev -e DATABASE_URL=sqlite:////tmp/dev.sqlite3 \
+		os-bakery-base sh -c '\
+			apt-get update -qq && \
+			DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -qq \
+				graphviz libgraphviz-dev pkg-config build-essential >/dev/null && \
+			pip install --quiet pygraphviz pydot && \
+			python manage.py graph_models catalog recipes builds infra \
+				--pygraphviz --rankdir=LR --color-code-deletions \
+				--arrow-shape normal -o docs/orm.svg && \
+			python manage.py graph_models catalog recipes builds infra \
+				--pygraphviz --rankdir=LR --color-code-deletions \
+				--arrow-shape normal -o docs/orm.png && \
+			python manage.py graph_models catalog recipes builds infra \
+				--dot --rankdir=LR --color-code-deletions \
+				--arrow-shape normal -o docs/orm.dot && \
+			chown -R $(shell id -u):$(shell id -g) docs/orm.svg docs/orm.png docs/orm.dot \
+		'

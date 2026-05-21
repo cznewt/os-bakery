@@ -1,8 +1,9 @@
 /*
- * Raspberry Pi OS — Bookworm 64-bit — for Raspberry Pi 5.
+ * Raspberry Pi OS — Bookworm 64-bit — for Raspberry Pi 3.
  *
- * Identical upstream image as rpi3 / rpi4; we publish a per-target
- * template so the orchestrator can apply per-board overlays through Salt.
+ * RaspiOS publishes a single arm64 image that runs on rpi3/4/5. Variant
+ * selects between `lite` (headless / server-like) and `desktop`. Recipes
+ * that need per-board firmware tweaks apply them through Salt.
  */
 
 packer { required_plugins {} }
@@ -27,14 +28,14 @@ locals {
   url           = replace(var.image_url, "{variant_path}", local.variant_path)
   archive_path  = "${var.work_root}/raspios-${var.variant}-arm64-latest.img.xz"
   raw_path      = "${var.work_root}/raspios-${var.variant}-arm64-latest.img"
-  packed_path   = "${var.cache_root}/raspios/rpi5/raspios-${var.variant}-arm64.img.xz"
-  manifest_path = "${var.cache_root}/raspios/rpi5/manifest-${var.variant}.json"
+  packed_path   = "${var.cache_root}/raspios/rpi3/raspios-${var.variant}-arm64.img.xz"
+  manifest_path = "${var.cache_root}/raspios/rpi3/manifest-${var.variant}.json"
 }
 
 source "null" "image" { communicator = "none" }
 
 build {
-  name    = "raspios-rpi5"
+  name    = "raspios-rpi3"
   sources = ["source.null.image"]
 
   provisioner "shell-local" {

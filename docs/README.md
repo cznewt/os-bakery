@@ -7,15 +7,17 @@ Welcome. This is the source-of-truth documentation for the **os-bakery** applica
 1. [Overview](overview.md) — what os-bakery does and the problem it solves.
 2. [Architecture](architecture.md) — components, request flow, deployment topology.
 3. [Data model](data-model.md) — every Django model, its fields, and how they relate.
-4. [Build workflow](workflow.md) — from `BuildRequest` to a downloadable artifact.
-5. [Packer guide](packer.md) — how the base-image refresh works.
-6. [Salt guide](salt.md) — how per-user customizations are baked in.
-7. [Deployment](deployment.md) — production runbook (Postgres, Redis, S3, workers).
-8. [Operations](operations.md) — admin tasks, sync commands, common failures.
-9. [API reference](api.md) — REST endpoints.
-10. [CI](ci.md) — GitHub Actions workflows: lint/tests, container builds, scheduled image refresh.
-11. [Roadmap](roadmap.md) — what's done, what's next.
-12. [Contributing](contributing.md) — local dev, conventions, code style.
+4. [Catalog matrix](catalog.md) — the concrete OS / hardware / variant / upstream-image grid we publish.
+5. [Supported platforms](platforms.md) — the wider device universe: Pis, BeagleBone, Jetson, PCs, VMs, future targets.
+6. [Build workflow](workflow.md) — from `BuildRequest` to a downloadable artifact.
+7. [Packer guide](packer.md) — how the base-image refresh works.
+8. [Salt guide](salt.md) — how per-user customizations are baked in.
+9. [Deployment](deployment.md) — production runbook (Postgres, Redis, S3, workers).
+10. [Operations](operations.md) — admin tasks, sync commands, common failures.
+11. [API reference](api.md) — REST endpoints.
+12. [CI](ci.md) — GitHub Actions workflows: lint/tests, container builds, scheduled image refresh.
+13. [Roadmap](roadmap.md) — what's done, what's next.
+14. [Contributing](contributing.md) — local dev, conventions, code style.
 
 ## Glossary
 

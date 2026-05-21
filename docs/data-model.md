@@ -14,6 +14,20 @@ Architecture ──◀── HardwareTarget ──◀── UpstreamImage ──
                                                                                                           └──◀── BuildEvent
 ```
 
+## Generated ORM diagram
+
+The full field-level diagram is generated from the live models with
+[`django-extensions`](https://django-extensions.readthedocs.io/en/latest/graph_models.html)
+and committed under `docs/`. Regenerate after any model change:
+
+```bash
+make orm-diagram
+```
+
+![ORM diagram](orm.svg)
+
+Also available: [`orm.png`](orm.png) (raster), [`orm.dot`](orm.dot) (Graphviz source).
+
 ## `catalog`
 
 ### `Architecture`

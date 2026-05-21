@@ -1,5 +1,8 @@
 /*
- * Batocera x86_64 (PC) — base image refresh.
+ * Batocera for generic x86_64 PCs — base image refresh.
+ *
+ * (Renamed from the legacy `x86_64` directory; HardwareTarget slug is
+ * `pc-amd64`.)
  */
 
 packer { required_plugins {} }
@@ -15,16 +18,16 @@ variable "work_root"      { type = string; default = "/tmp/os-bakery-packer" }
 
 locals {
   url           = replace(var.image_url, "{{release}}", var.release)
-  archive_path  = "${var.work_root}/batocera-${var.release}-x86_64.img.gz"
-  raw_path      = "${var.work_root}/batocera-${var.release}-x86_64.img"
-  packed_path   = "${var.cache_root}/batocera/x86_64/batocera-${var.release}-x86_64.img.xz"
-  manifest_path = "${var.cache_root}/batocera/x86_64/manifest.json"
+  archive_path  = "${var.work_root}/batocera-${var.release}-pc-amd64.img.gz"
+  raw_path      = "${var.work_root}/batocera-${var.release}-pc-amd64.img"
+  packed_path   = "${var.cache_root}/batocera/pc-amd64/batocera-${var.release}-pc-amd64.img.xz"
+  manifest_path = "${var.cache_root}/batocera/pc-amd64/manifest.json"
 }
 
 source "null" "image" { communicator = "none" }
 
 build {
-  name    = "batocera-x86_64"
+  name    = "batocera-pc-amd64"
   sources = ["source.null.image"]
 
   provisioner "shell-local" {

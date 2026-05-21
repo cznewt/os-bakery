@@ -1,21 +1,22 @@
 /*
- * Raspberry Pi OS — Bookworm 64-bit — for Raspberry Pi 5.
+ * Ubuntu — arm64 preinstalled for Raspberry Pi 4.
  *
- * Identical upstream image as rpi3 / rpi4; we publish a per-target
- * template so the orchestrator can apply per-board overlays through Salt.
+ * Canonical publishes `preinstalled-{server,desktop}-arm64+raspi.img.xz`
+ * images that run on rpi4 / rpi5. Variant flips between them.
  */
 
 packer { required_plugins {} }
 
+variable "release" { type = string; default = "24.04" }
 variable "variant" {
   type        = string
-  description = "raspios variant: lite | desktop"
-  default     = "lite"
+  description = "Ubuntu variant: server | desktop"
+  default     = "server"
 }
 
 variable "image_url" {
   type    = string
-  default = "https://downloads.raspberrypi.com/raspios_{variant_path}/images/raspios_{variant_path}-latest/raspios_{variant_path}-latest.img.xz"
+  default = "https://cdimage.ubuntu.com/releases/{{release}}/release/ubuntu-{{release}}-preinstalled-{{variant}}-arm64+raspi.img.xz"
 }
 
 variable "image_sha256"   { type = string; default = "" }
@@ -23,18 +24,17 @@ variable "cache_root"     { type = string; default = "${env("HOME")}/.cache/os-b
 variable "work_root"      { type = string; default = "/tmp/os-bakery-packer" }
 
 locals {
-  variant_path  = var.variant == "lite" ? "lite_arm64" : "arm64"
-  url           = replace(var.image_url, "{variant_path}", local.variant_path)
-  archive_path  = "${var.work_root}/raspios-${var.variant}-arm64-latest.img.xz"
-  raw_path      = "${var.work_root}/raspios-${var.variant}-arm64-latest.img"
-  packed_path   = "${var.cache_root}/raspios/rpi5/raspios-${var.variant}-arm64.img.xz"
-  manifest_path = "${var.cache_root}/raspios/rpi5/manifest-${var.variant}.json"
+  url           = replace(replace(var.image_url, "{{release}}", var.release), "{{variant}}", var.variant)
+  archive_path  = "${var.work_root}/ubuntu-${var.release}-${var.variant}-rpi4.img.xz"
+  raw_path      = "${var.work_root}/ubuntu-${var.release}-${var.variant}-rpi4.img"
+  packed_path   = "${var.cache_root}/ubuntu/rpi4/ubuntu-${var.release}-${var.variant}-rpi4.img.xz"
+  manifest_path = "${var.cache_root}/ubuntu/rpi4/manifest-${var.variant}.json"
 }
 
 source "null" "image" { communicator = "none" }
 
 build {
-  name    = "raspios-rpi5"
+  name    = "ubuntu-rpi4"
   sources = ["source.null.image"]
 
   provisioner "shell-local" {

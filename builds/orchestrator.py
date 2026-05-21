@@ -124,25 +124,22 @@ def _write_top(ctx: BuildContext) -> None:
 
 
 def _mount_and_provision(ctx: BuildContext) -> None:
-    """Mount the image read-write and run salt-call against it.
+    """Provision the image: try registered backends, fall back to a no-op.
 
-    Production implementation should:
-
-      * losetup -fP /path/to/image  (or guestmount via libguestfs)
-      * mount partitions under {workdir}/rootfs
-      * bind-mount /proc /sys /dev
-      * copy ctx.top_path to /srv/salt/top.sls inside the rootfs
-      * copy ctx.pillar_path to /srv/pillar/ inside the rootfs
-      * arch-chroot rootfs salt-call --local state.apply
-      * unmount and detach loop devices
-
-    The scaffold short-circuits and records the intent so unit tests can run
-    without root or libguestfs installed.
+    Today the only backend is ``packer_arm_tools`` — it shells out to the
+    user's existing chroot+qemu Docker action. When more backends land (a
+    native libguestfs path, an x86-side `losetup` path, a HAOS file-injector
+    for the few config-partition cases), this is where they plug in.
     """
+    from builds.provisioners import packer_arm_tools  # local import for testability
+
+    if packer_arm_tools.provision(ctx):
+        return
+
     _emit(
         ctx.build,
         "salt",
-        "Skipping mount+salt-call (orchestrator scaffold).",
+        "No provisioner backend handled this build — image will ship as the upstream base.",
         level="warning",
         target=str(ctx.target_image),
         states=str(ctx.top_path),

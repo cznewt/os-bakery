@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Base images · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern {
+      background-image:
+        linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    tr.row:hover td { background: rgb(245 245 244 / 0.6); }
+    .url-cell {
+      max-width: 28rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .url-cell:hover {
+      overflow: visible;
+      white-space: normal;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+
+  <div class="max-w-7xl mx-auto px-6 md:px-10">
+
+    <header class="pt-10 pb-8">
+      <a href="/" class="font-mono text-xs uppercase tracking-widest text-stone-500 hover:text-stone-900">
+        ← os-bakery
+      </a>
+      <h1 class="mt-3 text-3xl md:text-4xl font-bold tracking-tight">Base images</h1>
+      <p class="mt-2 text-stone-600 max-w-2xl">
+        Every <code class="font-mono text-xs px-1 bg-stone-100 rounded">UpstreamImage</code>
+        the catalog knows about — one row per (OS, release, hardware target, variant).
+        {{ total_rows }} total.
+      </p>
+
+      <nav class="mt-6 flex flex-wrap items-center gap-2 text-sm">
+        <a href="/images/"
+           class="px-3 py-1.5 rounded-md border border-stone-200
+                  {% if not selected_os %}bg-stone-900 text-white border-stone-900{% else %}hover:bg-stone-100{% endif %}">
+          All
+        </a>
+        {% for os_ in all_operating_systems %}
+        <a href="/images/?os={{ os_.slug }}"
+           class="px-3 py-1.5 rounded-md border border-stone-200
+                  {% if selected_os == os_.slug %}bg-stone-900 text-white border-stone-900{% else %}hover:bg-stone-100{% endif %}">
+          {{ os_.name }}
+        </a>
+        {% endfor %}
+      </nav>
+    </header>
+
+    <main class="pb-24 space-y-10">
+      {% for group in groups %}
+      <section class="rounded-2xl border border-stone-200 overflow-hidden bg-white"
+               style="border-top: 3px solid {{ group.accent }}">
+        <header class="px-6 py-4 flex items-center gap-3 border-b border-stone-100">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center"
+               style="background-color: {{ group.accent }}15">
+            {% if group.logo_svg %}
+              <img src="{{ group.logo_svg }}" alt="{{ group.os.name }}" class="w-7 h-7">
+            {% else %}
+              <span class="text-lg font-bold font-mono" style="color: {{ group.accent }}">
+                {{ group.logo_letter }}
+              </span>
+            {% endif %}
+          </div>
+          <div class="flex-1">
+            <h2 class="font-semibold text-lg">{{ group.os.name }}</h2>
+            <p class="text-xs text-stone-500 font-mono">{{ group.os.slug }} · {{ group.os.vendor }}</p>
+          </div>
+          <span class="text-sm text-stone-500">{{ group.rows|length }} image{{ group.rows|length|pluralize }}</span>
+        </header>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
+              <tr>
+                <th class="text-left px-6 py-3 font-medium">Release</th>
+                <th class="text-left px-4 py-3 font-medium">Channel</th>
+                <th class="text-left px-4 py-3 font-medium">Target</th>
+                <th class="text-left px-4 py-3 font-medium">Arch</th>
+                <th class="text-left px-4 py-3 font-medium">Variant</th>
+                <th class="text-left px-4 py-3 font-medium">Format</th>
+                <th class="text-left px-4 py-3 font-medium">Source</th>
+                <th class="text-left px-4 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100">
+              {% for img in group.rows %}
+              <tr class="row">
+                <td class="px-6 py-3 font-mono whitespace-nowrap">
+                  {{ img.release.version }}
+                  {% if img.release.is_default %}
+                    <span class="ml-1 text-[10px] uppercase font-medium px-1.5 py-0.5 rounded"
+                          style="background: {{ group.accent }}18; color: {{ group.accent }}">default</span>
+                  {% endif %}
+                  {% if img.release.codename %}
+                    <span class="text-stone-500 ml-1">{{ img.release.codename }}</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 font-mono text-stone-600">{{ img.release.channel }}</td>
+                <td class="px-4 py-3 font-mono">{{ img.hardware_target.slug }}</td>
+                <td class="px-4 py-3 font-mono text-stone-500">{{ img.hardware_target.architecture.slug }}</td>
+                <td class="px-4 py-3 font-mono">
+                  {% if img.variant %}{{ img.variant }}{% else %}<span class="text-stone-400">—</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 font-mono text-stone-600">{{ img.format }}</td>
+                <td class="px-4 py-3 url-cell font-mono text-xs text-stone-500" title="{{ img.source_url }}">
+                  <a href="{{ img.source_url }}" target="_blank" rel="noopener"
+                     class="hover:text-stone-900 hover:underline">
+                    {{ img.source_url }}
+                  </a>
+                </td>
+                <td class="px-4 py-3">
+                  {% if img.is_synced %}
+                    <span class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      synced
+                    </span>
+                  {% else %}
+                    <span class="inline-flex items-center gap-1 text-xs text-stone-500">
+                      <span class="w-1.5 h-1.5 rounded-full bg-stone-300"></span>
+                      pending
+                    </span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% empty %}
+      <div class="text-center py-16 text-stone-500">
+        No images for this filter. Try <a href="/images/" class="underline">All</a>.
+      </div>
+      {% endfor %}
+    </main>
+
+    <footer class="border-t border-stone-200 py-8 text-xs text-stone-500 flex justify-between font-mono">
+      <span><a href="/" class="hover:text-stone-900">← home</a></span>
+      <span><a href="/api/catalog/upstream-images/" class="hover:text-stone-900">JSON API</a> · <a href="/admin/catalog/upstreamimage/" class="hover:text-stone-900">Admin</a></span>
+    </footer>
+  </div>
+</body>
+</html>

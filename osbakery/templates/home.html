@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>os-bakery — bake custom OS images</title>
+  <script src="https://cdn.tailwindcss.com?plugins=line-clamp"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern {
+      background-image:
+        linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .card {
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 18px 32px -16px rgb(0 0 0 / 0.18); }
+    .chip {
+      font-variant: small-caps;
+      letter-spacing: .08em;
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+
+  <div class="max-w-6xl mx-auto px-6 md:px-10">
+
+    <header class="pt-14 pb-12">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-8 h-8 rounded-md bg-amber-500 text-white grid place-items-center font-mono font-bold">b</div>
+        <span class="font-mono text-sm uppercase tracking-widest text-stone-500">os-bakery</span>
+      </div>
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight max-w-3xl">
+        Bake custom OS images
+        <span class="text-stone-500"> — pick a recipe, fill out a form, get a download link.</span>
+      </h1>
+      <p class="mt-4 text-stone-600 max-w-2xl">
+        Each OS below maps to one or more hardware targets and variants.
+        Recipes layer Salt customizations on top — hostname, Wi-Fi, SSH key,
+        whatever your fleet expects on first boot.
+      </p>
+      <dl class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl">
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-stone-500">Operating systems</dt>
+          <dd class="text-2xl font-semibold mt-1">{{ stats.n_oses }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-stone-500">Hardware targets</dt>
+          <dd class="text-2xl font-semibold mt-1">{{ stats.n_targets_total }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-stone-500">Releases</dt>
+          <dd class="text-2xl font-semibold mt-1">{{ stats.n_releases_total }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-stone-500">Upstream images</dt>
+          <dd class="text-2xl font-semibold mt-1">{{ stats.n_images_total }}</dd>
+        </div>
+      </dl>
+    </header>
+
+    <main class="pb-24">
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 class="text-sm font-mono uppercase tracking-widest text-stone-500">// catalogue</h2>
+        <div class="flex items-center gap-4 text-sm">
+          <a href="/images/" class="text-stone-500 hover:text-stone-900">→ all base images</a>
+          <a href="/admin/" class="text-stone-500 hover:text-stone-900">→ admin</a>
+        </div>
+      </div>
+
+      <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {% for card in cards %}
+        <li class="card bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-5"
+            style="border-top: 3px solid {{ card.accent }}">
+          <div class="flex items-start justify-between">
+            <div class="w-14 h-14 rounded-xl flex items-center justify-center"
+                 style="background-color: {{ card.accent }}15">
+              {% if card.logo_svg %}
+                <img src="{{ card.logo_svg }}" alt="{{ card.name }}" class="w-9 h-9">
+              {% else %}
+                <span class="text-2xl font-bold font-mono" style="color: {{ card.accent }}">
+                  {{ card.logo_letter }}
+                </span>
+              {% endif %}
+            </div>
+            <span class="chip text-[11px] font-medium px-2 py-1 rounded-md"
+                  style="color: {{ card.accent }}; background: {{ card.accent }}12">
+              {{ card.kind }}
+            </span>
+          </div>
+
+          <div>
+            <h3 class="text-xl font-semibold tracking-tight">{{ card.name }}</h3>
+            <p class="text-xs text-stone-500 font-mono mt-1">{{ card.vendor }}</p>
+          </div>
+
+          <p class="text-sm text-stone-600 line-clamp-3 min-h-[3.75rem]">
+            {{ card.summary|default:"No summary provided." }}
+          </p>
+
+          <div class="mt-auto pt-4 border-t border-stone-100 text-sm">
+            <div class="flex justify-between text-stone-600">
+              <span>{{ card.n_targets }} target{{ card.n_targets|pluralize }}</span>
+              <span>{{ card.n_images }} image{{ card.n_images|pluralize }}</span>
+            </div>
+            {% if card.default_release %}
+            <div class="mt-1 text-stone-500 font-mono text-xs">
+              default: {{ card.default_release.version }}
+              {% if card.default_release.codename %}({{ card.default_release.codename }}){% endif %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="flex items-center justify-between">
+            <a href="/admin/catalog/operatingsystem/{{ card.id }}/change/"
+               class="text-sm font-medium hover:underline"
+               style="color: {{ card.accent }}">
+              Bake →
+            </a>
+            {% if card.homepage %}
+            <a href="{{ card.homepage }}" target="_blank" rel="noopener"
+               class="text-xs text-stone-400 hover:text-stone-600">homepage ↗</a>
+            {% endif %}
+          </div>
+        </li>
+        {% empty %}
+        <li class="col-span-full text-center py-16 text-stone-500">
+          No operating systems yet. Run
+          <code class="font-mono text-stone-700">python manage.py seed_catalog</code>
+          to populate the matrix.
+        </li>
+        {% endfor %}
+      </ul>
+    </main>
+
+    <footer class="border-t border-stone-200 py-8 text-xs text-stone-500 flex justify-between font-mono">
+      <span>os-bakery · Django + Packer + Salt</span>
+      <span><a href="/api/catalog/operating-systems/" class="hover:text-stone-900">API</a> · <a href="/admin/" class="hover:text-stone-900">Admin</a></span>
+    </footer>
+  </div>
+</body>
+</html>

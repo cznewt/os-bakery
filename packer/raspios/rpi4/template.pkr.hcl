@@ -1,26 +1,36 @@
 /*
- * Raspberry Pi OS — Bookworm 64-bit Lite — for Raspberry Pi 4.
+ * Raspberry Pi OS — Bookworm 64-bit — for Raspberry Pi 4.
  *
- * RPi4 uses the same arm64 lite image as RPi5; the difference is mostly
- * boot firmware. Recipes that target rpi4 vs rpi5 can apply different
- * config.txt fragments through Salt.
+ * RaspiOS publishes a single arm64 image (lite or desktop) that runs on
+ * rpi3/4/5. Variant selects between `lite` (headless / server-like) and
+ * `desktop`. Recipes that need per-board firmware tweaks apply them
+ * through Salt at build time.
  */
 
 packer { required_plugins {} }
 
+variable "variant" {
+  type        = string
+  description = "raspios variant: lite | desktop"
+  default     = "lite"
+}
+
 variable "image_url" {
   type    = string
-  default = "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-latest/raspios_lite_arm64-latest.img.xz"
+  default = "https://downloads.raspberrypi.com/raspios_{variant_path}/images/raspios_{variant_path}-latest/raspios_{variant_path}-latest.img.xz"
 }
+
 variable "image_sha256"   { type = string; default = "" }
 variable "cache_root"     { type = string; default = "${env("HOME")}/.cache/os-bakery" }
 variable "work_root"      { type = string; default = "/tmp/os-bakery-packer" }
 
 locals {
-  archive_path  = "${var.work_root}/raspios-lite-arm64-latest.img.xz"
-  raw_path      = "${var.work_root}/raspios-lite-arm64-latest.img"
-  packed_path   = "${var.cache_root}/raspios/rpi4/raspios-lite-arm64.img.xz"
-  manifest_path = "${var.cache_root}/raspios/rpi4/manifest.json"
+  variant_path  = var.variant == "lite" ? "lite_arm64" : "arm64"
+  url           = replace(var.image_url, "{variant_path}", local.variant_path)
+  archive_path  = "${var.work_root}/raspios-${var.variant}-arm64-latest.img.xz"
+  raw_path      = "${var.work_root}/raspios-${var.variant}-arm64-latest.img"
+  packed_path   = "${var.cache_root}/raspios/rpi4/raspios-${var.variant}-arm64.img.xz"
+  manifest_path = "${var.cache_root}/raspios/rpi4/manifest-${var.variant}.json"
 }
 
 source "null" "image" { communicator = "none" }
@@ -34,10 +44,10 @@ build {
       "set -euo pipefail",
       "source ${path.root}/../../shared/_lib.sh",
       "mkdir -p ${var.work_root} ${dirname(local.packed_path)}",
-      "fetch '${var.image_url}' '${local.archive_path}' '${var.image_sha256}'",
+      "fetch '${local.url}' '${local.archive_path}' '${var.image_sha256}'",
       "extract '${local.archive_path}' '${local.raw_path}'",
       "pack_xz '${local.raw_path}' '${local.packed_path}'",
-      "write_manifest '${local.manifest_path}' '${var.image_url}' '${local.packed_path}'",
+      "write_manifest '${local.manifest_path}' '${local.url}' '${local.packed_path}'",
     ]
   }
 }

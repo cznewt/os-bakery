@@ -1,17 +1,18 @@
 /*
- * Ubuntu Server LTS — arm64 — preinstalled ARM image.
+ * Home Assistant OS — Raspberry Pi 4.
  *
- * Ubuntu publishes preinstalled images for RPi and generic UEFI ARM; we use
- * the generic preinstalled-server ARM image, which the recipe can then specialise
- * for any arm64 board.
+ * HAOS is an immutable appliance OS — Packer here just mirrors the upstream
+ * `.img.xz` into the cache. The orchestrator does NOT run salt-call against
+ * HAOS images; per-build customizations are limited to file injection on the
+ * config / data partitions before flashing.
  */
 
 packer { required_plugins {} }
 
-variable "release"        { type = string; default = "24.04" }
+variable "release"        { type = string; default = "14.2" }
 variable "image_url" {
   type    = string
-  default = "https://cdimage.ubuntu.com/releases/{{release}}/release/ubuntu-{{release}}-preinstalled-server-arm64+raspi.img.xz"
+  default = "https://github.com/home-assistant/operating-system/releases/download/{{release}}/haos_rpi4-64-{{release}}.img.xz"
 }
 variable "image_sha256"   { type = string; default = "" }
 variable "cache_root"     { type = string; default = "${env("HOME")}/.cache/os-bakery" }
@@ -19,16 +20,16 @@ variable "work_root"      { type = string; default = "/tmp/os-bakery-packer" }
 
 locals {
   url           = replace(var.image_url, "{{release}}", var.release)
-  archive_path  = "${var.work_root}/ubuntu-${var.release}-arm64.img.xz"
-  raw_path      = "${var.work_root}/ubuntu-${var.release}-arm64.img"
-  packed_path   = "${var.cache_root}/ubuntu/arm64/ubuntu-${var.release}-arm64.img.xz"
-  manifest_path = "${var.cache_root}/ubuntu/arm64/manifest.json"
+  archive_path  = "${var.work_root}/haos-${var.release}-rpi4.img.xz"
+  raw_path      = "${var.work_root}/haos-${var.release}-rpi4.img"
+  packed_path   = "${var.cache_root}/haos/rpi4/haos-${var.release}-rpi4.img.xz"
+  manifest_path = "${var.cache_root}/haos/rpi4/manifest.json"
 }
 
 source "null" "image" { communicator = "none" }
 
 build {
-  name    = "ubuntu-arm64"
+  name    = "haos-rpi4"
   sources = ["source.null.image"]
 
   provisioner "shell-local" {

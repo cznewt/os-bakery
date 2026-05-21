@@ -187,6 +187,20 @@ BUILD_WORK_ROOT.mkdir(parents=True, exist_ok=True)
 DOWNLOAD_TOKEN_TTL_HOURS = env.int("DOWNLOAD_TOKEN_TTL_HOURS", default=72)
 
 # ---------------------------------------------------------------------------
+# packer-arm-tools provisioner (see docs/operations.md and the
+# `reference-packer-arm-tools` memory)
+# ---------------------------------------------------------------------------
+
+PACKER_ARM_TOOLS_ENABLED = env.bool("PACKER_ARM_TOOLS_ENABLED", default=False)
+PACKER_ARM_TOOLS_IMAGE = env(
+    "PACKER_ARM_TOOLS_IMAGE",
+    default="docker.io/cznewt/packer-arm-tools:latest",
+)
+
+SALT_MASTER_URL = env("SALT_MASTER_URL", default="")
+SALT_MINION_VERSION = env("SALT_MINION_VERSION", default="3007")
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
