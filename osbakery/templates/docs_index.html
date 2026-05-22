@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docs · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern {
+      background-image:
+        linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .card { transition: transform .12s ease, box-shadow .12s ease; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 18px 32px -16px rgb(0 0 0 / 0.18); }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+
+  <div class="max-w-4xl mx-auto px-6 md:px-10">
+
+    <header class="pt-10 pb-8">
+      <a href="/" class="font-mono text-xs uppercase tracking-widest text-stone-500 hover:text-stone-900">
+        ← os-bakery
+      </a>
+      <h1 class="mt-3 text-3xl md:text-4xl font-bold tracking-tight">Docs</h1>
+      <p class="mt-2 text-stone-600 max-w-2xl">
+        Quick references for using os-bakery — flashing the artifacts,
+        what the catalog covers, which devices we support.
+      </p>
+    </header>
+
+    <main class="pb-24">
+      <ul class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {% for page in pages %}
+        <li>
+          <a href="/docs/{{ page.slug }}/"
+             class="card block bg-white rounded-2xl border border-stone-200 p-6 h-full"
+             style="border-top: 3px solid #f59e0b">
+            <h3 class="text-lg font-semibold tracking-tight">{{ page.title }}</h3>
+            <p class="mt-2 text-sm text-stone-600">{{ page.tagline }}</p>
+            <p class="mt-4 text-sm font-medium text-amber-600">Read →</p>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </main>
+
+    <footer class="border-t border-stone-200 py-8 text-xs text-stone-500 flex justify-between font-mono">
+      <span><a href="/" class="hover:text-stone-900">← home</a></span>
+      <span>Full docs tree: <code class="font-mono">docs/</code> in the repo</span>
+    </footer>
+  </div>
+</body>
+</html>

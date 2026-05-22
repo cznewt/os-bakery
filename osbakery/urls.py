@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from .views import bake_index, bake_recipe, base_images, devices, home
+from .views import (
+    bake_index,
+    bake_recipe,
+    base_images,
+    devices,
+    doc_page,
+    docs_index,
+    home,
+)
 
 urlpatterns = [
     path("", home, name="home"),
@@ -9,6 +17,8 @@ urlpatterns = [
     path("images/", base_images, name="base_images"),
     path("bake/", bake_index, name="bake_index"),
     path("bake/<slug:slug>/", bake_recipe, name="bake_recipe"),
+    path("docs/", docs_index, name="docs_index"),
+    path("docs/<slug:slug>/", doc_page, name="doc_page"),
     path("admin/", admin.site.urls),
     path("api/catalog/", include("catalog.urls")),
     path("api/recipes/", include("recipes.urls")),

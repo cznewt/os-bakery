@@ -6,9 +6,12 @@ these views compose data from `catalog` + `recipes` + `builds`.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from django.conf import settings
 from django.contrib import messages
 from django.db.models import Count, Prefetch
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from builds.models import BuildRequest
@@ -545,3 +548,69 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
 # Avoid hardcoding string literals when checking RecipeOption.kind.
 RecipeOptionKind_BOOLEAN = "boolean"
 RecipeOptionKind_INTEGER = "integer"
+
+
+# ---------------------------------------------------------------------------
+# Docs viewer — render markdown files under docs/ as styled HTML
+# ---------------------------------------------------------------------------
+
+# Files allowed to be rendered. Keeps the view from serving arbitrary
+# project paths under /docs/<slug>/. Add a row when you want a new doc on
+# the site.
+DOCS_ON_SITE: dict[str, dict[str, str]] = {
+    "flashing": {
+        "title": "Flashing baked images",
+        "tagline": "Per-format, per-OS: how to write the artifact onto SD / "
+                   "USB / VM / ESP.",
+        "file": "docs/flashing.md",
+    },
+    "catalog": {
+        "title": "Catalog matrix",
+        "tagline": "Every Architecture / HardwareTarget / OperatingSystem / "
+                   "OSRelease / UpstreamImage row the seed creates.",
+        "file": "docs/catalog.md",
+    },
+    "platforms": {
+        "title": "Supported platforms",
+        "tagline": "The wider device universe — Pis, BeagleBone, Jetson, "
+                   "PCs, VMs, future targets.",
+        "file": "docs/platforms.md",
+    },
+}
+
+
+def docs_index(request: HttpRequest) -> HttpResponse:
+    pages = [
+        {"slug": slug, **meta}
+        for slug, meta in DOCS_ON_SITE.items()
+    ]
+    return render(request, "docs_index.html", {"pages": pages})
+
+
+def doc_page(request: HttpRequest, slug: str) -> HttpResponse:
+    meta = DOCS_ON_SITE.get(slug)
+    if meta is None:
+        raise Http404(f"Unknown doc: {slug!r}")
+
+    import markdown
+
+    path = Path(settings.BASE_DIR) / meta["file"]
+    if not path.exists():
+        raise Http404(f"Doc file missing on disk: {path}")
+
+    text = path.read_text(encoding="utf-8")
+    body_html = markdown.markdown(
+        text,
+        extensions=["tables", "fenced_code", "toc", "sane_lists"],
+        output_format="html5",
+    )
+    return render(request, "doc.html", {
+        "slug": slug,
+        "title": meta["title"],
+        "tagline": meta["tagline"],
+        "body_html": body_html,
+        "other_pages": [
+            {"slug": s, **m}
+            for s, m in DOCS_ON_SITE.items() if s != slug
+        ],
+    })

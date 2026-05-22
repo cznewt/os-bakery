@@ -23,6 +23,7 @@ dependencies = [
     "requests>=2.32",
     "humanize>=4.10",
     "pydantic>=2.9",
+    "markdown>=3.6",
 ]
 
 [project.optional-dependencies]
