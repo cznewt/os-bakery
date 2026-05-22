@@ -69,7 +69,16 @@
 
             <div class="-mx-5 -mt-5 mb-1 h-32 flex items-center justify-center border-b border-stone-100 relative overflow-hidden"
                  style="background: linear-gradient(135deg, {{ card.brand_accent|default:section.accent }}08 0%, {{ section.accent }}15 100%)">
-              {% if card.image_url %}
+              {% if card.image_url and card.image_crop_x %}
+                {# Multi-device collage — crop one quadrant via background-position #}
+                <div class="absolute inset-0 m-2"
+                     style="background-image: url('{{ card.image_url }}');
+                            background-size: 200% 200%;
+                            background-position: {{ card.image_crop_x }} {{ card.image_crop_y }};
+                            background-repeat: no-repeat;"
+                     onerror="this.style.display='none'"
+                     role="img" aria-label="{{ card.name }}"></div>
+              {% elif card.image_url %}
                 <img src="{{ card.image_url }}" alt="{{ card.name }}"
                      class="max-h-28 max-w-full object-contain relative z-10"
                      loading="lazy"

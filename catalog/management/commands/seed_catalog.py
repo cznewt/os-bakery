@@ -290,8 +290,9 @@ OPERATING_SYSTEMS: list[OSSeed] = [
 ]
 
 RELEASES: list[ReleaseSeed] = [
-    # Batocera — keep the last two supported annual releases. 41 dropped
-    # once 43 became stable; older builds still work but receive no fixes.
+    # Batocera — current 43 default + 42 + a v39 row for hardware stuck on
+    # the legacy build (RG552 stopped at 39).
+    ReleaseSeed("batocera", "39", "stable", codename="legacy"),
     ReleaseSeed("batocera", "42", "stable"),
     ReleaseSeed("batocera", "43", "stable", is_default=True),
     # Ubuntu — Jammy (22.04) is still in standard support until 2027; Noble
@@ -344,7 +345,34 @@ RELEASES: list[ReleaseSeed] = [
 
 # --- URL templates (kept inline so the seed file is the one source of truth)
 
-_BATOCERA = "https://updates.batocera.org/{platform}/stable/last/batocera-{platform}-{version}-stable.img.gz"
+# Batocera URLs are date-stamped per build (not "stable.img.gz" as the
+# pattern would suggest) — scraped from https://batocera.org/download.
+# Refresh when upstream cuts a new build. Bare /stable/last/ is a real
+# directory; this resolves to whatever file is currently inside it.
+BATOCERA_IMAGES: list[tuple[str, str, str]] = [
+    # (HardwareTarget slug, Batocera release version, download URL)
+    # Single-board computers (43 = current default).
+    ("rpi3",      "43", "https://updates.batocera.org/bcm2837/stable/last/batocera-bcm2837-43-20260508.img.gz"),
+    ("rpi4",      "43", "https://updates.batocera.org/bcm2711/stable/last/batocera-bcm2711-43-20260501.img.gz"),
+    ("rpi5",      "43", "https://updates.batocera.org/bcm2712/stable/last/batocera-bcm2712-43-20260430.img.gz"),
+    ("pc-amd64",  "43", "https://updates.batocera.org/x86-64-v3/stable/last/batocera-zen3-x86-64-v3-43-20260430.img.gz"),
+    # Anbernic RGxx3 family (RK3568) — one image, four catalog rows.
+    ("rg353p",    "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
+    ("rg353ps",   "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
+    ("rg353v",    "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
+    ("rg353vs",   "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
+    # RG503 — RK3326 family build.
+    ("rg503",     "42", "https://updates.batocera.org/rk3326/stable/last/batocera-rk3326-42-20251016.img.gz"),
+    # RG552 — stuck on the legacy v39 RK3399 build.
+    ("rg552",     "39", "https://updates.batocera.org/rg552/stable/last/batocera-rk3399-rg552-39-20240305.img.gz"),
+    # Retroid Snapdragon-865 handhelds (Pocket 5 + Pocket Flip 2).
+    ("pocket-5",  "42", "https://updates.batocera.org/rp5/stable/last/batocera-sm8250-rp5-42-20251011.img.gz"),
+    ("flip-2",    "42", "https://updates.batocera.org/rpflip2/stable/last/batocera-sm8250-rpflip2-42-20251011.img.gz"),
+    # SM8550 share-build (AYN Odin 2 / Loki Zero / a handful of others all
+    # ship the same Snapdragon 8 Gen 2 image).
+    ("ayn-odin-2", "43", "https://updates.batocera.org/sm8550/stable/last/batocera-sm8550-43-20260507.img.gz"),
+    ("loki-zero",  "43", "https://updates.batocera.org/sm8550/stable/last/batocera-sm8550-43-20260507.img.gz"),
+]
 
 # Ubuntu — URL patterns are uniform across modern LTS releases; the only
 # moving parts are the version number and the desktop-ISO point version.
@@ -432,35 +460,13 @@ _HAOS = (
 def _images() -> list[ImageSeed]:
     rows: list[ImageSeed] = []
 
-    # Batocera 42 / 43 — one image per target per version, no variant.
-    # Platform name is whatever the Batocera updates.batocera.org URL uses
-    # as the per-device folder name (typically SoC for SBCs, slug for
-    # handhelds).
-    batocera_targets = [
-        # Single-board computers — platform = SoC family
-        ("rpi3", "bcm2710"),
-        ("rpi4", "bcm2711"),
-        ("rpi5", "bcm2712"),
-        ("pc-amd64", "x86_64"),
-        # Retro handhelds — platform = device slug
-        ("rg552", "rg552"),
-        ("rg353p", "rg353p"),
-        ("rg353ps", "rg353ps"),
-        ("rg353v", "rg353v"),
-        ("rg353vs", "rg353vs"),
-        ("rg503", "rg503"),
-        ("loki-zero", "loki-zero"),
-        ("flip-2", "flip-2"),
-        ("pocket-5", "pocket-5"),
-        ("ayn-odin-2", "odin2"),
-    ]
-    for version in ("42", "43"):
-        for target, platform in batocera_targets:
-            rows.append(ImageSeed(
-                "batocera", version, "stable", target, "",
-                _BATOCERA.format(platform=platform, version=version),
-                "img.gz",
-            ))
+    # Batocera — explicit per-target URLs because the upstream filename
+    # is date-stamped (not "stable.img.gz") and per-device builds branch
+    # off at different versions. See BATOCERA_IMAGES above.
+    for target, version, url in BATOCERA_IMAGES:
+        rows.append(ImageSeed(
+            "batocera", version, "stable", target, "", url, "img.gz",
+        ))
 
     # Ubuntu 22.04 (Jammy) + 24.04 (Noble) — same shape: raspi-preinstalled
     # for rpi4/5 × server/desktop, cloud for generic-arm64 + pc-amd64 server,
@@ -752,6 +758,18 @@ class Command(BaseCommand):
                     defaults=dict(format=iseed.format,
                                   source_url=iseed.source_url),
                 )
+                # Refresh source_url + format on existing rows so re-seeding
+                # picks up upstream URL changes (e.g. a new Batocera build's
+                # date-stamped filename).
+                changed = []
+                if not created and obj.source_url != iseed.source_url:
+                    obj.source_url = iseed.source_url
+                    changed.append("source_url")
+                if not created and obj.format != iseed.format:
+                    obj.format = iseed.format
+                    changed.append("format")
+                if changed:
+                    obj.save(update_fields=changed)
                 report["image"] += 1
                 report["image+"] += int(created)
                 if not quiet:

@@ -212,6 +212,20 @@ def _brand_logo_for(slug: str) -> tuple[str, str]:
     return ("", "")
 
 
+# Targets that share a single Batocera collage as their photo. Each variant
+# gets its own quadrant via CSS background-position, so the card shows only
+# the relevant device. Values are (bg-x%, bg-y%) for a 2×2 grid laid out as:
+#   top-left V , top-right P
+#   bot-left VS, bot-right PS
+# (derived from the actual batocera.org/images/download/anbernic-rgxx3.png).
+SHARED_IMAGE_CROPS: dict[str, tuple[str, str]] = {
+    "rg353v":  ("0%",   "0%"),
+    "rg353p":  ("100%", "0%"),
+    "rg353vs": ("0%",   "100%"),
+    "rg353ps": ("100%", "100%"),
+}
+
+
 CATEGORY_ORDER: list[tuple[str, str, str]] = [
     # (key, label, accent)
     ("rpi", "Raspberry Pi", "#c51a4a"),
@@ -256,6 +270,7 @@ def devices(request: HttpRequest) -> HttpResponse:
     for t in targets:
         oses_for_target = sorted(target_oses.get(t.id, set()))
         brand_svg, brand_accent = _brand_logo_for(t.slug)
+        crop = SHARED_IMAGE_CROPS.get(t.slug)
         cards_by_category.setdefault(
             _categorize_target(t.slug, t.architecture.slug), []
         ).append({
@@ -266,6 +281,8 @@ def devices(request: HttpRequest) -> HttpResponse:
             "soc": t.soc,
             "notes": t.notes,
             "image_url": t.image_url,
+            "image_crop_x": crop[0] if crop else "",
+            "image_crop_y": crop[1] if crop else "",
             "brand_svg": brand_svg,
             "brand_accent": brand_accent,
             "is_active": t.is_active,
