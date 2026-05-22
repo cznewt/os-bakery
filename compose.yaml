@@ -35,7 +35,8 @@ x-django-env: &django-env
   AWS_ACCESS_KEY_ID: osbakery
   AWS_SECRET_ACCESS_KEY: osbakery-secret
   SALT_MASTER_URL: salt-master
-  PACKER_ARM_TOOLS_ENABLED: "false"
+  PACKER_ARM_TOOLS_ENABLED: "true"
+  PACKER_ARM_TOOLS_PRESETS: /opt/packer-arm-tools/configs
 
 services:
   # --------------------------------------------------------------------

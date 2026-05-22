@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
@@ -132,29 +134,57 @@ def build_image_variables(build, *, with_salt: bool) -> dict[str, Any]:
     return variables
 
 
-def build_docker_command(
+def _prepare_packer_workspace(
     *,
-    image: str,
+    presets_root: Path,
+    work: Path,
     preset: str,
-    image_name: str,
-    build_path: str,
     image_variables: dict[str, Any],
-) -> list[str]:
-    """Build the ``docker run …`` argv for one bake.
+) -> Path:
+    """Lay out a per-build packer workspace from the bundled presets.
 
-    Mirrors the invocation pattern from
-    ``packer-arm-tools/justfile`` (the ``test-…-image`` recipes).
+    Copies the preset config + the shared `scripts/` helpers into the work
+    dir and writes the variables JSON. Strips `file_checksum` from the
+    preset when the build's upstream sha256 is unknown — otherwise Packer
+    refuses to download the archive.
     """
+    work.mkdir(parents=True, exist_ok=True)
+    src = presets_root / f"{preset}.json"
+    if not src.exists():
+        raise FileNotFoundError(f"packer-arm-tools preset missing: {src}")
+
+    config_path = work / "config.json"
+    # Load + maybe-mutate so we can drop checksum verification when we
+    # don't have one yet.
+    cfg = json.loads(src.read_text())
+    if not image_variables.get("FILE_CHECKSUM"):
+        for builder in cfg.get("builders", []):
+            builder.pop("file_checksum", None)
+            builder["file_checksum_type"] = "none"
+    config_path.write_text(json.dumps(cfg, indent=2))
+
+    # The shell provisioners under scripts/ reference each other with
+    # relative paths, so they live next to config.json.
+    scripts_src = presets_root / "scripts"
+    if scripts_src.is_dir():
+        scripts_dst = work / "scripts"
+        if scripts_dst.exists():
+            shutil.rmtree(scripts_dst)
+        shutil.copytree(scripts_src, scripts_dst)
+
+    (work / "variables.json").write_text(
+        json.dumps(image_variables, sort_keys=True, indent=2)
+    )
+    return config_path
+
+
+def build_packer_command(*, config_path: Path) -> list[str]:
+    """The actual ``packer build`` argv. Run with cwd=work_dir."""
     return [
-        "docker", "run", "-i", "--rm=true", "--privileged",
-        "-v", "/dev:/dev",
-        "-v", f"{build_path}:/build",
-        "-e", "BUILD_PATH=/build",
-        "-e", f"IMAGE_VARIABLES={json.dumps(image_variables, sort_keys=True)}",
-        "-e", f"IMAGE_NAME={image_name}",
-        "-e", f"IMAGE_TEMPLATE={preset}",
-        image,
-        "packer-build-arm-image",
+        "packer", "build",
+        "-color=false",
+        "-var-file=variables.json",
+        config_path.name,
     ]
 
 
@@ -164,11 +194,10 @@ def build_docker_command(
 
 
 def provision(ctx: "BuildContext") -> bool:
-    """Bake the image via packer-arm-tools. Return True if it ran.
+    """Bake the image via packer-arm-tools, in-process. Return True if it ran.
 
-    The function emits BuildEvents for visibility but does NOT swallow errors
-    — a non-zero exit from the Docker run propagates as ``CalledProcessError``
-    so the orchestrator marks the build failed.
+    Errors propagate as CalledProcessError; the orchestrator marks the
+    build failed and surfaces stderr through the BuildEvent log.
     """
     from builds.models import BuildEvent  # local import to keep cycles tame
 
@@ -191,65 +220,100 @@ def provision(ctx: "BuildContext") -> bool:
         )
         return False
 
-    enabled = getattr(settings, "PACKER_ARM_TOOLS_ENABLED", False)
-    if not enabled:
+    if not getattr(settings, "PACKER_ARM_TOOLS_ENABLED", False):
         BuildEvent.objects.create(
             build=build, phase="salt", level="info",
             message=(
                 f"packer-arm-tools matched preset {preset!r} but "
-                "PACKER_ARM_TOOLS_ENABLED is False — skipping (set the flag "
-                "and ensure Docker + the cznewt/packer-arm-tools image are "
-                "available to enable)."
+                "PACKER_ARM_TOOLS_ENABLED is False — skipping."
             ),
             data={"backend": "packer_arm_tools", "preset": preset, "dry_run": True},
         )
         return False
 
-    if shutil.which("docker") is None:
+    if shutil.which("packer") is None:
         BuildEvent.objects.create(
             build=build, phase="salt", level="error",
-            message="packer-arm-tools needs Docker on PATH; none found.",
+            message=(
+                "packer-arm-tools needs `packer` on PATH; none found. Are "
+                "you running on worker-packer-arm?"
+            ),
             data={"backend": "packer_arm_tools"},
         )
         return False
 
-    image = getattr(
-        settings, "PACKER_ARM_TOOLS_IMAGE",
-        "docker.io/cznewt/packer-arm-tools:latest",
-    )
+    presets_root = Path(getattr(
+        settings, "PACKER_ARM_TOOLS_PRESETS",
+        "/opt/packer-arm-tools/configs",
+    ))
     image_variables = build_image_variables(build, with_salt=with_salt)
-    image_name = f"osbakery-{build.id}"
-    cmd = build_docker_command(
-        image=image,
+    work = ctx.work_dir / "packer-arm"
+    config_path = _prepare_packer_workspace(
+        presets_root=presets_root,
+        work=work,
         preset=preset,
-        image_name=image_name,
-        build_path=str(ctx.work_dir),
         image_variables=image_variables,
     )
 
     BuildEvent.objects.create(
         build=build, phase="salt", level="info",
-        message=f"Dispatching packer-arm-tools preset {preset!r}.",
+        message=f"Running packer-arm-tools preset {preset!r}.",
         data={
             "backend": "packer_arm_tools",
             "preset": preset,
-            "image": image,
-            # don't log secrets verbatim
             "variable_keys": sorted(image_variables.keys()),
+            "work": str(work),
         },
     )
-    log.info("$ %s", " ".join(cmd))
-    subprocess.run(cmd, check=True, cwd=ctx.work_dir)
 
-    # The action writes `${IMAGE_NAME}.img` into BUILD_PATH; the orchestrator
-    # will pick that up as the new target image to pack.
-    new_image = ctx.work_dir / f"{image_name}.img"
-    if new_image.exists():
-        ctx.target_image = new_image
+    cmd = build_packer_command(config_path=config_path)
+    env = os.environ.copy()
+    env.setdefault("PACKER_PLUGIN_PATH", "/usr/bin")
+    env.setdefault("PACKER_CACHE_DIR", str(work / ".packer_cache"))
+    env.setdefault("PACKER_LOG", "0")
+    log.info("[packer-arm] $ %s   (cwd=%s)", " ".join(cmd), work)
+    try:
+        completed = subprocess.run(
+            cmd, cwd=work, env=env, check=True,
+            capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        BuildEvent.objects.create(
+            build=build, phase="salt", level="error",
+            message=f"packer build failed ({exc.returncode}); see data.",
+            data={
+                "backend": "packer_arm_tools", "preset": preset,
+                "stdout_tail": (exc.stdout or "")[-4000:],
+                "stderr_tail": (exc.stderr or "")[-4000:],
+            },
+        )
+        raise
+
+    output = work / "output.img"
+    if not output.exists():
+        BuildEvent.objects.create(
+            build=build, phase="salt", level="error",
+            message="packer build succeeded but output.img was not produced.",
+            data={
+                "backend": "packer_arm_tools", "preset": preset,
+                "stdout_tail": completed.stdout[-4000:],
+            },
+        )
+        return False
+
+    # Replace the placeholder/cached target_image with packer's output so
+    # the rest of the orchestrator (pack → publish) operates on the real
+    # baked rootfs.
+    if ctx.target_image.exists():
+        ctx.target_image.unlink()
+    shutil.move(str(output), str(ctx.target_image))
 
     BuildEvent.objects.create(
         build=build, phase="salt", level="info",
-        message=f"packer-arm-tools finished — target image is {new_image.name}.",
+        message=(
+            f"packer-arm-tools produced {ctx.target_image.stat().st_size:,} "
+            f"byte image via preset {preset!r}."
+        ),
         data={"backend": "packer_arm_tools", "preset": preset},
     )
     return True
