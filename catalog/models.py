@@ -187,7 +187,17 @@ class UpstreamImage(TimestampedModel):
     local_path = models.CharField(
         max_length=512,
         blank=True,
-        help_text="Path under PACKER cache once mirrored locally.",
+        help_text="Filesystem path on the build host when a local mirror is "
+                  "in use. Legacy — prefer cache_storage_key (MinIO/S3).",
+    )
+    cache_storage_key = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text=(
+            "Object key inside the artifacts S3 bucket where the "
+            "decompressed upstream image is mirrored. Filled in by "
+            "`manage.py refresh_upstream`. Preferred over local_path."
+        ),
     )
     last_synced_at = models.DateTimeField(null=True, blank=True)
 

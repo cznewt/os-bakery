@@ -55,9 +55,30 @@ def _prepare_workspace(build: BuildRequest) -> BuildContext:
 
     upstream = build.upstream_image
     cached_local = Path(upstream.local_path) if upstream.local_path else None
+    base_image = None
 
-    if cached_local and cached_local.exists():
+    # Preferred path: the upstream blob is in the artifacts S3 bucket under
+    # cache/… (populated by `manage.py refresh_upstream`). Download once
+    # per build into the work dir so the bake pipeline has a real rootfs
+    # to operate on.
+    if upstream.cache_storage_key:
+        storage = storages["artifacts"]
+        if storage.exists(upstream.cache_storage_key):
+            base_image = work_dir / "base.img"
+            _emit(
+                build, "prepare",
+                f"Fetching base image from S3: {upstream.cache_storage_key} "
+                f"({upstream.size_bytes:,} bytes).",
+            )
+            with storage.open(upstream.cache_storage_key, "rb") as src, \
+                    base_image.open("wb") as dst:
+                shutil.copyfileobj(src, dst, length=1024 * 1024)
+
+    if base_image is None and cached_local and cached_local.exists():
+        # Legacy: an operator pre-staged the image on a shared filesystem.
         base_image = cached_local
+    elif base_image is not None:
+        pass  # we already pulled from S3
     elif settings.DEBUG:
         # Dev mode — Packer hasn't refreshed this image's local mirror
         # yet. Generate a small placeholder so the rest of the pipeline

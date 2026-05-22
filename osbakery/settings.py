@@ -185,6 +185,14 @@ SALT_PILLAR_ROOT = Path(env("SALT_PILLAR_ROOT", default=str(BASE_DIR / "salt" / 
 BUILD_WORK_ROOT = Path(env("BUILD_WORK_ROOT", default=str(BASE_DIR / "storage" / "work"))).resolve()
 BUILD_WORK_ROOT.mkdir(parents=True, exist_ok=True)
 
+# Where downloaded + decompressed upstream images are cached so the bake
+# pipeline can copy them instead of refetching each time. Shared volume
+# across web + worker-* containers via compose.
+IMAGE_CACHE_ROOT = Path(
+    env("IMAGE_CACHE_ROOT", default=str(BASE_DIR / "storage" / "image-cache"))
+).resolve()
+IMAGE_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+
 DOWNLOAD_TOKEN_TTL_HOURS = env.int("DOWNLOAD_TOKEN_TTL_HOURS", default=72)
 
 # ---------------------------------------------------------------------------
