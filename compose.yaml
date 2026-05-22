@@ -146,9 +146,10 @@ services:
         python manage.py wait_for_services 2>/dev/null || true
         echo "[entry] applying migrations…"
         python manage.py migrate --noinput
-        echo "[entry] seeding catalog + recipes…"
+        echo "[entry] seeding catalog + recipes + tenants…"
         python manage.py seed_catalog --prune --quiet
         python manage.py seed_recipes
+        python manage.py seed_tenants
         echo "[entry] launching dev server…"
         python manage.py runserver 0.0.0.0:8000
     environment:

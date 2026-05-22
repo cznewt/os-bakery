@@ -75,6 +75,7 @@ class Cluster(TimestampedModel):
         BATOCERA_LAN = "batocera_lan", _("Batocera LAN")
         ESPHOME_NETWORK = "esphome_network", _("ESPHome network")
         ROBOTICS_SWARM = "robotics_swarm", _("Robotics / autopilot swarm")
+        VPN_MESH = "vpn_mesh", _("VPN mesh (ZeroTier / WireGuard / Tailscale)")
         GENERIC = "generic", _("Generic")
 
     tenant = models.ForeignKey(
