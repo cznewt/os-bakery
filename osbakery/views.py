@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from builds.models import BuildRequest
 from catalog.models import HardwareTarget, OperatingSystem, OSRelease, UpstreamImage
 from recipes.models import Recipe
+from tenants.models import Cluster
 
 
 # simple-icons.org serves a public, versioned CDN of brand SVGs. Each entry
@@ -559,6 +560,15 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
                     "label": label,
                 })
 
+    # Clusters the user can drop this device into. For now: all active
+    # clusters across all tenants. When auth/tenancy lands, scope to the
+    # requesting user's tenants.
+    clusters_qs = (
+        Cluster.objects.filter(is_active=True)
+        .select_related("tenant")
+        .order_by("tenant__name", "name")
+    )
+
     if request.method == "POST":
         image_id = request.POST.get("upstream_image")
         upstream = UpstreamImage.objects.filter(pk=image_id).first()
@@ -578,6 +588,12 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
                 else:
                     option_values[opt.key] = raw
 
+            cluster_id = request.POST.get("cluster") or None
+            cluster_obj = (
+                Cluster.objects.filter(pk=cluster_id).first()
+                if cluster_id else None
+            )
+
             build = BuildRequest.objects.create(
                 recipe_version=version,
                 hardware_target=upstream.hardware_target,
@@ -585,14 +601,31 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
                 option_values=option_values,
                 label=str(option_values.get("hostname") or recipe.slug),
                 requester=request.user if request.user.is_authenticated else None,
+                cluster=cluster_obj,
+                tenant=cluster_obj.tenant if cluster_obj else None,
             )
             messages.success(
                 request,
-                f"Build {build.id} queued. Track it in the admin.",
+                f"Build {build.id} queued"
+                + (f" — joining {cluster_obj}" if cluster_obj else "")
+                + ". Track it in the admin.",
             )
             return redirect(f"/admin/builds/buildrequest/{build.id}/change/")
 
     logo = _os_logo(recipe.operating_system.slug)
+    # Build cluster choices for the template, grouped by tenant.
+    cluster_choices = [
+        {
+            "id": c.id,
+            "slug": c.slug,
+            "name": c.name,
+            "tenant_slug": c.tenant.slug,
+            "tenant_name": c.tenant.name,
+            "kind": c.get_kind_display(),
+            "kind_key": c.kind,
+        }
+        for c in clusters_qs
+    ]
     return render(request, "bake_recipe.html", {
         "recipe": recipe,
         "version": version,
@@ -604,6 +637,7 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
         "accent": logo["accent"],
         "options": options,
         "image_choices": image_choices,
+        "cluster_choices": cluster_choices,
     })
 
 

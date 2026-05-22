@@ -79,18 +79,44 @@ def _prepare_workspace(build: BuildRequest) -> BuildContext:
     )
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge `override` into `base`. Lists are replaced, not concatenated."""
+    result = dict(base)
+    for key, value in override.items():
+        if (
+            key in result
+            and isinstance(result[key], dict)
+            and isinstance(value, dict)
+        ):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def _write_pillar(ctx: BuildContext) -> None:
     """Materialize the build's pillar tree on disk.
 
-    The pillar contains:
+    Layers (later wins):
 
-    * the recipe version's ``pillar_overrides``
-    * the user's ``option_values`` under the ``options`` key
-    * computed metadata (hardware target slug, OS slug, build id)
+    1. Recipe version's ``pillar_overrides``.
+    2. Cluster's ``parameters`` JSON (when ``build.cluster`` is set) —
+       shared config like kubeadm tokens, MQTT brokers, ZeroTier network
+       IDs that every device joining the cluster inherits.
+    3. The user's ``option_values`` under the ``options`` key — per-build
+       answers from the bake form (hostname, Wi-Fi, …).
+    4. Computed osbakery metadata.
     """
     build = ctx.build
     rv = build.recipe_version
-    pillar = {
+
+    pillar: dict = {}
+    pillar = _deep_merge(pillar, rv.pillar_overrides or {})
+    if build.cluster_id is not None:
+        cluster_params = build.cluster.parameters or {}
+        pillar = _deep_merge(pillar, cluster_params)
+    pillar = _deep_merge(pillar, {"options": dict(build.option_values or {})})
+    pillar = _deep_merge(pillar, {
         "osbakery": {
             "build_id": str(build.id),
             "recipe": rv.recipe.slug,
@@ -98,11 +124,11 @@ def _write_pillar(ctx: BuildContext) -> None:
             "operating_system": rv.recipe.operating_system.slug,
             "hardware_target": build.hardware_target.slug,
             "label": build.label,
+            "tenant": build.tenant.slug if build.tenant_id else None,
+            "cluster": (f"{build.cluster.tenant.slug}/{build.cluster.slug}"
+                        if build.cluster_id else None),
         },
-        "options": dict(build.option_values or {}),
-    }
-    overrides = rv.pillar_overrides or {}
-    pillar.update(overrides)
+    })
 
     (ctx.pillar_path / "top.sls").write_text(
         yaml.safe_dump({"base": {"*": [build.recipe_version.recipe.slug]}})
