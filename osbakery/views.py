@@ -212,18 +212,11 @@ def _brand_logo_for(slug: str) -> tuple[str, str]:
     return ("", "")
 
 
-# Targets that share a single Batocera collage as their photo. Each variant
-# gets its own quadrant via CSS background-position, so the card shows only
-# the relevant device. Values are (bg-x%, bg-y%) for a 2×2 grid laid out as:
-#   top-left V , top-right P
-#   bot-left VS, bot-right PS
-# (derived from the actual batocera.org/images/download/anbernic-rgxx3.png).
-SHARED_IMAGE_CROPS: dict[str, tuple[str, str]] = {
-    "rg353v":  ("0%",   "0%"),
-    "rg353p":  ("100%", "0%"),
-    "rg353vs": ("0%",   "100%"),
-    "rg353ps": ("100%", "100%"),
-}
+# Targets that share a single multi-device collage as their photo. Each
+# slug maps to a (bg-x%, bg-y%) CSS background-position pair so the card
+# shows only its quadrant. Empty for now — add an entry when a real
+# collage photo lands.
+SHARED_IMAGE_CROPS: dict[str, tuple[str, str]] = {}
 
 
 CATEGORY_ORDER: list[tuple[str, str, str]] = [
