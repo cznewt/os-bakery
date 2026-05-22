@@ -12,10 +12,33 @@ from .models import BuildRequest
 log = logging.getLogger(__name__)
 
 
+def route_queue_for_build(build: BuildRequest) -> str:
+    """Pick the Celery queue for a build based on its OS + hardware target.
+
+    Three workers subscribe to distinct queues (see compose.yaml):
+
+      builds-esphome      — ESPHome firmware compile (esphome OS).
+      builds-packer-arm   — ARM bakes via packer-arm-tools chroot+qemu.
+      builds-packer       — everything else: x86 PCs, VMs, generic-arm64
+                            cloud images, the catch-all.
+    """
+    os_slug = build.recipe_version.recipe.operating_system.slug
+    if os_slug == "esphome":
+        return "builds-esphome"
+    target = build.hardware_target
+    arch_slug = target.architecture.slug
+    if arch_slug in {"arm64", "armhf"} and target.boot_method in {"rpi", "uboot", "custom"}:
+        # Pi family, BeagleBone, Jetson, retro handhelds, AYN Odin — all
+        # need chroot+qemu via packer-arm-tools.
+        return "builds-packer-arm"
+    return "builds-packer"
+
+
 @receiver(post_save, sender=BuildRequest)
 def enqueue_new_build_requests(sender, instance: BuildRequest, created: bool, **kwargs) -> None:
     """When a build is freshly created in QUEUED state, dispatch the Celery task.
 
+    Routes to the per-builder queue chosen by ``route_queue_for_build``.
     Swallows broker-unreachable errors so the request itself still lands —
     devs running without redis can poke the UI; an operator can re-dispatch
     later via the admin.
@@ -26,12 +49,15 @@ def enqueue_new_build_requests(sender, instance: BuildRequest, created: bool, **
     # Local import to avoid loading Celery at app-ready time during migrations.
     from .tasks import run_build
 
+    queue = route_queue_for_build(instance)
     try:
-        async_result = run_build.apply_async(args=[str(instance.id)], queue="builds")
+        async_result = run_build.apply_async(args=[str(instance.id)], queue=queue)
     except Exception as exc:
         log.warning(
-            "Could not enqueue build %s — broker unreachable? (%s)", instance.id, exc
+            "Could not enqueue build %s on %s — broker unreachable? (%s)",
+            instance.id, queue, exc,
         )
         return
     BuildRequest.objects.filter(pk=instance.pk).update(celery_task_id=async_result.id)
-    log.info("Dispatched build %s as celery task %s", instance.id, async_result.id)
+    log.info("Dispatched build %s as celery task %s on queue %s",
+             instance.id, async_result.id, queue)

@@ -167,29 +167,101 @@ services:
       minio-init:
         condition: service_completed_successfully
 
-  worker:
+  # --------------------------------------------------------------------
+  # Workers — one per builder. Each subscribes to its own queue so the
+  # ARM bakes don't drag generic / ESPHome builds into a privileged
+  # container. Routing lives in builds/signals.route_queue_for_build.
+  # --------------------------------------------------------------------
+
+  worker-packer:
     build:
       context: .
-      target: worker
-    container_name: os-bakery-worker
+      target: worker-packer
+    container_name: os-bakery-worker-packer
     command:
       - sh
       - -ec
       - |
-        echo "[entry] waiting for migrations from web…"
+        echo "[entry] waiting for web migrations…"
         for i in $$(seq 1 30); do
-          if python manage.py migrate --check 2>/dev/null; then
-            break
-          fi
+          if python manage.py migrate --check 2>/dev/null; then break; fi
           sleep 2
         done
-        echo "[entry] starting celery worker…"
-        celery -A osbakery worker -l info -Q builds,default --concurrency 2
+        echo "[entry] starting celery worker-packer…"
+        celery -A osbakery worker -n worker-packer@%h -l info \
+            -Q builds-packer,default --concurrency 2
     environment:
       <<: *django-env
     volumes:
       - .:/app
-      - build-work:/srv/os-bakery/work
+      - build-work:/app/storage/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  worker-packer-arm:
+    build:
+      context: .
+      target: worker-packer-arm
+    container_name: os-bakery-worker-packer-arm
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for web migrations…"
+        for i in $$(seq 1 30); do
+          if python manage.py migrate --check 2>/dev/null; then break; fi
+          sleep 2
+        done
+        echo "[entry] starting celery worker-packer-arm…"
+        celery -A osbakery worker -n worker-packer-arm@%h -l info \
+            -Q builds-packer-arm --concurrency 1
+    environment:
+      <<: *django-env
+    # privileged + host docker socket so the worker can call out to the
+    # cznewt/packer-arm-tools container (which itself does the chroot +
+    # qemu-aarch64-static + salt-call dance).
+    privileged: true
+    volumes:
+      - .:/app
+      - build-work:/app/storage/work
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  worker-esphome:
+    build:
+      context: .
+      target: worker-esphome
+    container_name: os-bakery-worker-esphome
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for web migrations…"
+        for i in $$(seq 1 30); do
+          if python manage.py migrate --check 2>/dev/null; then break; fi
+          sleep 2
+        done
+        echo "[entry] starting celery worker-esphome…"
+        celery -A osbakery worker -n worker-esphome@%h -l info \
+            -Q builds-esphome --concurrency 2
+    environment:
+      <<: *django-env
+      PLATFORMIO_CORE_DIR: /var/lib/osbakery/platformio
+    volumes:
+      - .:/app
+      - build-work:/app/storage/work
+      - esphome-platformio:/var/lib/osbakery/platformio
     depends_on:
       postgres:
         condition: service_healthy
@@ -205,3 +277,4 @@ volumes:
   salt-master-data:
   salt-master-cache:
   build-work:
+  esphome-platformio:

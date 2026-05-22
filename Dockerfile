@@ -1,12 +1,23 @@
 # Multi-stage Dockerfile for os-bakery.
 #
-# Two targets:
-#   * web     — Django + gunicorn. Tiny.
-#   * worker  — Django + Celery + the build toolchain (Packer, qemu, xz, salt-call).
+# Targets:
+#   web                — Django + gunicorn. Tiny.
+#   worker-packer      — Celery + Packer + qemu/xz, runs x86 / cloud-image
+#                        Packer refreshes + the non-ARM bake pipeline.
+#   worker-packer-arm  — Celery + Docker CLI. Shells out to the existing
+#                        cznewt/packer-arm-tools image (chroot + qemu-aarch64)
+#                        for ARM SBC / handheld bakes. Needs --privileged +
+#                        the host Docker socket at runtime.
+#   worker-esphome     — Celery + esphome (which pulls PlatformIO toolchains
+#                        on first compile). For ESPHome microcontroller bakes.
+#   worker             — legacy alias for `worker-packer` so older callers
+#                        keep working until they pick a more specific target.
 #
 # Build:
-#   docker build --target web    -t os-bakery-web    .
-#   docker build --target worker -t os-bakery-worker .
+#   docker build --target web               -t os-bakery-web .
+#   docker build --target worker-packer     -t os-bakery-worker-packer .
+#   docker build --target worker-packer-arm -t os-bakery-worker-packer-arm .
+#   docker build --target worker-esphome    -t os-bakery-worker-esphome .
 
 ARG PYTHON_VERSION=3.12
 ARG PACKER_VERSION=1.11.2
@@ -32,7 +43,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Copy the whole source tree before `pip install .` — hatchling's
-# packages = [osbakery, catalog, recipes, builds, infra] need all five
+# packages = [osbakery, catalog, recipes, builds, infra, tenants] need all
 # top-level dirs present at build time.
 COPY . /app
 
@@ -52,7 +63,6 @@ FROM base AS web
 
 EXPOSE 8000
 
-# Sensible production defaults; override via env at deploy time.
 ENV GUNICORN_WORKERS=4 \
     GUNICORN_TIMEOUT=60 \
     GUNICORN_BIND=0.0.0.0:8000
@@ -64,16 +74,13 @@ CMD ["sh", "-c", "gunicorn osbakery.wsgi:application \
         --access-logfile - --error-logfile -"]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# worker — Celery + build toolchain
+# worker-packer — non-ARM bakes: pulls upstream images, mounts loop devices,
+#                 runs salt-call against the rootfs, repacks as .img.xz
 # ──────────────────────────────────────────────────────────────────────────────
-FROM base AS worker
+FROM base AS worker-packer
 
 ARG PACKER_VERSION
 
-# Tools needed by builds.orchestrator when it does real mounting + packing.
-# libguestfs is intentionally omitted from the slim image: it pulls in a
-# kernel and grows the layer by ~600 MB. Add it in your deployment overlay
-# if you need guestmount (or run the worker on a host with kpartx/losetup).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         xz-utils \
@@ -86,17 +93,11 @@ RUN apt-get update \
         e2fsprogs \
         parted \
         sudo \
-        docker.io \
     && rm -rf /var/lib/apt/lists/*
-# salt-common isn't in Debian trixie; salt-call runs inside the
-# packer-arm-tools Docker image (chroot+qemu) rather than directly on
-# the worker, so we don't need it here. If a future code path wants
-# salt-call --local on the host, install from the SaltProject repo:
-#   curl -fsSL https://repo.saltproject.io/install.sh | sh -s -- -P -X
-# docker.io is added so the worker can shell out to packer-arm-tools
-# when PACKER_ARM_TOOLS_ENABLED=true.
 
-# Install Packer.
+# HashiCorp Packer — used by the orchestrator for x86 image refreshes
+# (Ubuntu cloud-img, Batocera x86_64, etc.). ARM images go through
+# packer-arm-tools (next target), not this binary.
 RUN curl -fsSL "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip" \
         -o /tmp/packer.zip \
     && unzip /tmp/packer.zip -d /usr/local/bin \
@@ -104,9 +105,57 @@ RUN curl -fsSL "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_$
     && packer version
 
 ENV CELERY_CONCURRENCY=2 \
-    CELERY_QUEUES=builds,default
+    CELERY_QUEUES=builds-packer,default
 
 CMD ["sh", "-c", "celery -A osbakery worker \
-        -l info \
+        -n worker-packer@%h -l info \
         -Q ${CELERY_QUEUES} \
         --concurrency ${CELERY_CONCURRENCY}"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# worker-packer-arm — shells out to packer-arm-tools for ARM bakes
+# ──────────────────────────────────────────────────────────────────────────────
+FROM base AS worker-packer-arm
+
+# Just enough to talk to the host Docker socket + decompress upstream xz.
+# The heavy lifting (chroot + qemu-aarch64-static + salt-call) happens
+# inside the cznewt/packer-arm-tools container that this worker spawns.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        xz-utils \
+        gzip \
+        sudo \
+        docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CELERY_CONCURRENCY=1 \
+    CELERY_QUEUES=builds-packer-arm
+
+CMD ["sh", "-c", "celery -A osbakery worker \
+        -n worker-packer-arm@%h -l info \
+        -Q ${CELERY_QUEUES} \
+        --concurrency ${CELERY_CONCURRENCY}"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# worker-esphome — ESPHome firmware compile
+# ──────────────────────────────────────────────────────────────────────────────
+FROM base AS worker-esphome
+
+# esphome bundles PlatformIO; on first compile it downloads the ESP
+# toolchain into ~/.platformio (cached on the worker volume).
+RUN pip install --no-cache-dir 'esphome>=2025.11.0'
+
+ENV CELERY_CONCURRENCY=2 \
+    CELERY_QUEUES=builds-esphome \
+    PLATFORMIO_CORE_DIR=/var/lib/osbakery/platformio
+
+CMD ["sh", "-c", "celery -A osbakery worker \
+        -n worker-esphome@%h -l info \
+        -Q ${CELERY_QUEUES} \
+        --concurrency ${CELERY_CONCURRENCY}"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# worker — legacy alias for worker-packer (kept until callers migrate)
+# ──────────────────────────────────────────────────────────────────────────────
+FROM worker-packer AS worker
+ENV CELERY_QUEUES=builds-packer,builds,default

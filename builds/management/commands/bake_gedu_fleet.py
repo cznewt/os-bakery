@@ -183,11 +183,13 @@ class Command(BaseCommand):
         existing.save()
         if requeue:
             # post_save signal only fires for created=True, so requeues need
-            # explicit dispatch.
+            # explicit dispatch. Route via the same logic the signal uses.
             from builds.tasks import run_build
+            from builds.signals import route_queue_for_build
+            queue = route_queue_for_build(existing)
             try:
                 async_result = run_build.apply_async(
-                    args=[str(existing.id)], queue="builds",
+                    args=[str(existing.id)], queue=queue,
                 )
                 BuildRequest.objects.filter(pk=existing.pk).update(
                     celery_task_id=async_result.id,

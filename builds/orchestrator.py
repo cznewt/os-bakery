@@ -223,6 +223,12 @@ def _publish(ctx: BuildContext, packed: Path) -> Artifact:
     digest, size = _sha256(packed)
     target_key = f"{ctx.build.id}/{packed.name}"
 
+    # Re-bake case: drop the previous Artifact + cascading DownloadTokens
+    # (Artifact is OneToOne to BuildRequest) before publishing the new one.
+    # The old object lingers in S3 storage under its prior key — orphaned
+    # files are reaped by a future cleanup pass.
+    Artifact.objects.filter(build=ctx.build).delete()
+
     with packed.open("rb") as fh:
         storage.save(target_key, fh)
 
