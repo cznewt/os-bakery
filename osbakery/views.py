@@ -163,6 +163,55 @@ def _categorize_target(slug: str, arch_slug: str = "") -> str:
     return "handheld"
 
 
+# Per-prefix brand mark for targets that don't have a real product photo
+# yet. Either a simple-icons.org brand slug (rendered to SVG by the CDN) or
+# a direct URL to a Wikipedia Commons file when simple-icons doesn't carry
+# the brand. The accent hex feeds the card background gradient.
+_BRAND_LOGO_BY_PREFIX: list[tuple[str, str, str]] = [
+    # (slug-prefix, brand-logo URL, accent hex)
+    # Single-board computers
+    ("rpi",         "https://cdn.simpleicons.org/raspberrypi/c51a4a",  "c51a4a"),
+    ("jetson-",     "https://cdn.simpleicons.org/nvidia/76b900",       "76b900"),
+    ("beaglebone-", "https://www.beagleboard.org/img/beagleboard-logo.svg", "990000"),
+    # ESP / microcontroller — Espressif is the common chip vendor.
+    ("esp32",       "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("esp8266",     "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("ai-thinker",  "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("athom",       "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("laskakit",    "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("m5stack",     "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("shelly",      "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("sonoff",      "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("ulanzi",      "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("weber",       "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    ("wemos",       "https://cdn.simpleicons.org/espressif/e7352c",    "e7352c"),
+    # Retro handhelds — Anbernic logo from Wikipedia (no simple-icons brand).
+    ("rg",          "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Anbernic_logo.png/500px-Anbernic_logo.png", "1f6feb"),
+    ("loki-",       "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Anbernic_logo.png/500px-Anbernic_logo.png", "1f6feb"),
+    ("flip-",       "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Anbernic_logo.png/500px-Anbernic_logo.png", "1f6feb"),
+    ("pocket-",     "",  "1f6feb"),  # Retroid — no public logo on the CDNs we trust
+    ("ayn-",        "",  "1f6feb"),  # AYN — same
+    # PC / VM hypervisor brands.
+    ("vm-virtualbox","https://cdn.simpleicons.org/virtualbox/183a61",  "183a61"),
+    ("vm-qemu",     "https://cdn.simpleicons.org/qemu/ff6600",         "ff6600"),
+    ("vm-hyperv",   "https://cdn.simpleicons.org/microsoft/0078d4",    "0078d4"),
+    ("pc-amd64",    "https://cdn.simpleicons.org/intel/0071c5",        "0071c5"),
+    ("generic-arm64","https://cdn.simpleicons.org/arm/0091bd",         "0091bd"),
+]
+
+
+def _brand_logo_for(slug: str) -> tuple[str, str]:
+    """Return (svg_url, accent_hex) for a target's vendor brand mark.
+
+    Returns ("", "") when no brand maps — template falls back to the
+    slug-typography card-top.
+    """
+    for prefix, url, accent in _BRAND_LOGO_BY_PREFIX:
+        if slug.startswith(prefix):
+            return (url, f"#{accent}")
+    return ("", "")
+
+
 CATEGORY_ORDER: list[tuple[str, str, str]] = [
     # (key, label, accent)
     ("rpi", "Raspberry Pi", "#c51a4a"),
@@ -206,6 +255,7 @@ def devices(request: HttpRequest) -> HttpResponse:
     cards_by_category: dict[str, list[dict]] = {}
     for t in targets:
         oses_for_target = sorted(target_oses.get(t.id, set()))
+        brand_svg, brand_accent = _brand_logo_for(t.slug)
         cards_by_category.setdefault(
             _categorize_target(t.slug, t.architecture.slug), []
         ).append({
@@ -216,6 +266,8 @@ def devices(request: HttpRequest) -> HttpResponse:
             "soc": t.soc,
             "notes": t.notes,
             "image_url": t.image_url,
+            "brand_svg": brand_svg,
+            "brand_accent": brand_accent,
             "is_active": t.is_active,
             "n_images": image_counts.get(t.id, 0),
             "oses": [

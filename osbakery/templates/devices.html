@@ -67,14 +67,34 @@
           <li class="card bg-white rounded-2xl border border-stone-200 p-5 flex flex-col gap-3 overflow-hidden"
               style="border-top: 3px solid {{ section.accent }}">
 
-            {% if card.image_url %}
-            <div class="-mx-5 -mt-5 mb-1 h-32 flex items-center justify-center bg-stone-50 border-b border-stone-100">
-              <img src="{{ card.image_url }}" alt="{{ card.name }}"
-                   class="max-h-28 max-w-full object-contain"
-                   loading="lazy"
-                   onerror="this.parentElement.style.display='none'">
+            <div class="-mx-5 -mt-5 mb-1 h-32 flex items-center justify-center border-b border-stone-100 relative overflow-hidden"
+                 style="background: linear-gradient(135deg, {{ card.brand_accent|default:section.accent }}08 0%, {{ section.accent }}15 100%)">
+              {% if card.image_url %}
+                <img src="{{ card.image_url }}" alt="{{ card.name }}"
+                     class="max-h-28 max-w-full object-contain relative z-10"
+                     loading="lazy"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                <div class="absolute inset-0 flex flex-col items-center justify-center gap-1" style="display:none">
+                  {% if card.brand_svg %}
+                  <img src="{{ card.brand_svg }}" alt="" class="w-10 h-10 opacity-50"
+                       onerror="this.style.display='none'">
+                  {% endif %}
+                  <span class="font-mono text-sm font-bold tracking-tight" style="color: {{ card.brand_accent|default:section.accent }}">
+                    {{ card.slug }}
+                  </span>
+                </div>
+              {% else %}
+                <div class="flex flex-col items-center justify-center gap-1.5">
+                  {% if card.brand_svg %}
+                  <img src="{{ card.brand_svg }}" alt="" class="w-10 h-10 opacity-50"
+                       onerror="this.style.display='none'">
+                  {% endif %}
+                  <span class="font-mono text-sm font-bold tracking-tight" style="color: {{ card.brand_accent|default:section.accent }}">
+                    {{ card.slug }}
+                  </span>
+                </div>
+              {% endif %}
             </div>
-            {% endif %}
 
             <header class="flex items-start justify-between gap-2">
               <div class="min-w-0">
