@@ -85,9 +85,16 @@ RUN apt-get update \
         dosfstools \
         e2fsprogs \
         parted \
-        salt-common \
         sudo \
+        docker.io \
     && rm -rf /var/lib/apt/lists/*
+# salt-common isn't in Debian trixie; salt-call runs inside the
+# packer-arm-tools Docker image (chroot+qemu) rather than directly on
+# the worker, so we don't need it here. If a future code path wants
+# salt-call --local on the host, install from the SaltProject repo:
+#   curl -fsSL https://repo.saltproject.io/install.sh | sh -s -- -P -X
+# docker.io is added so the worker can shell out to packer-arm-tools
+# when PACKER_ARM_TOOLS_ENABLED=true.
 
 # Install Packer.
 RUN curl -fsSL "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip" \

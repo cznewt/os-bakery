@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django_filters",
     "django_extensions",
     # Local
+    "tenants.apps.TenantsConfig",
     "catalog.apps.CatalogConfig",
     "recipes.apps.RecipesConfig",
     "builds.apps.BuildsConfig",

@@ -81,6 +81,14 @@ class Recipe(TimestampedModel):
         null=True,
         blank=True,
     )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.PROTECT,
+        related_name="recipes",
+        null=True,
+        blank=True,
+        help_text="Tenant that owns this recipe. Leave blank for global recipes.",
+    )
     icon = models.CharField(max_length=80, blank=True, help_text="UI icon hint.")
     tags = models.JSONField(default=list, blank=True)
 

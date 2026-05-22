@@ -1,0 +1,20 @@
+from django.contrib import admin
+
+from .models import Cluster, Tenant
+
+
+@admin.register(Tenant)
+class TenantAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "owner", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("slug", "name")
+    prepopulated_fields = {"slug": ("name",)}
+    filter_horizontal = ("members",)
+
+
+@admin.register(Cluster)
+class ClusterAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "tenant", "kind", "is_active", "created_at")
+    list_filter = ("kind", "is_active", "tenant")
+    search_fields = ("slug", "name", "tenant__slug")
+    autocomplete_fields = ("tenant",)

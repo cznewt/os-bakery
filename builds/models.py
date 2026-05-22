@@ -79,6 +79,24 @@ class BuildRequest(models.Model):
         blank=True,
         help_text="Optional user-supplied label (e.g. hostname or customer name).",
     )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.PROTECT,
+        related_name="build_requests",
+        null=True,
+        blank=True,
+    )
+    cluster = models.ForeignKey(
+        "tenants.Cluster",
+        on_delete=models.SET_NULL,
+        related_name="build_requests",
+        null=True,
+        blank=True,
+        help_text=(
+            "Optional Cluster the new device joins. Its `parameters` JSON "
+            "merges into the pillar at bake time."
+        ),
+    )
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
     queued_at = models.DateTimeField(auto_now_add=True)

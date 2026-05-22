@@ -1,0 +1,206 @@
+# Local-dev compose stack for os-bakery.
+#
+# Brings up the full thing: Postgres for state, Redis for the Celery broker,
+# MinIO as an S3-compatible artifact store (with an init container that
+# creates the bucket), a Salt master so baked images can register their
+# minions, the Django web app, and the Celery worker that runs the build
+# orchestrator.
+#
+# Quick start:
+#     docker compose up -d
+#     # web at http://localhost:8000
+#     # minio console at http://localhost:9001 (osbakery / osbakery-secret)
+#     docker compose logs -f web worker
+#
+# Tear down (keep volumes):
+#     docker compose down
+# Tear down (wipe data too):
+#     docker compose down -v
+#
+# Service-to-env mapping lives in this file so .env doesn't have to grow
+# yet-another set of "compose-specific" overrides. To override anything for
+# your own dev box, drop a compose.override.yaml next to this file.
+
+x-django-env: &django-env
+  DJANGO_SECRET_KEY: dev-insecure-secret-change-me
+  DJANGO_DEBUG: "true"
+  DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,web,0.0.0.0,*"
+  DATABASE_URL: postgres://osbakery:osbakery@postgres:5432/osbakery
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  ARTIFACT_STORAGE_BACKEND: s3
+  AWS_STORAGE_BUCKET_NAME: os-bakery-artifacts
+  AWS_S3_ENDPOINT_URL: http://minio:9000
+  AWS_S3_REGION_NAME: us-east-1
+  AWS_ACCESS_KEY_ID: osbakery
+  AWS_SECRET_ACCESS_KEY: osbakery-secret
+  SALT_MASTER_URL: salt-master
+  PACKER_ARM_TOOLS_ENABLED: "false"
+
+services:
+  # --------------------------------------------------------------------
+  # Stateful infrastructure
+  # --------------------------------------------------------------------
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: os-bakery-postgres
+    environment:
+      POSTGRES_USER: osbakery
+      POSTGRES_PASSWORD: osbakery
+      POSTGRES_DB: osbakery
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osbakery -d osbakery"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: os-bakery-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: os-bakery-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: osbakery
+      MINIO_ROOT_PASSWORD: osbakery-secret
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: os-bakery-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        until mc alias set local http://minio:9000 osbakery osbakery-secret; do
+          sleep 1
+        done
+        mc mb --ignore-existing local/os-bakery-artifacts
+        mc anonymous set download local/os-bakery-artifacts
+        echo 'MinIO bucket os-bakery-artifacts ready.'
+    restart: "no"
+
+  # --------------------------------------------------------------------
+  # Salt master (idle by default — recipes bake minions pointing at it)
+  # --------------------------------------------------------------------
+
+  salt-master:
+    image: ghcr.io/cdalvaro/docker-salt-master:latest
+    container_name: os-bakery-salt-master
+    environment:
+      SALT_LOG_LEVEL: warning
+      SALT_MASTER_SIGN_PUBKEY: "False"
+      # Dev convenience — auto-accept minion keys. NEVER use in prod.
+      SALT_MASTER_AUTOACCEPT: "True"
+    volumes:
+      # cdalvaro/docker-salt-master expects state + pillar trees under
+      # /home/salt/data/srv (NOT /srv) and will rm-and-recreate them on
+      # startup, so we bind to that path read-only.
+      - ./salt/states:/home/salt/data/srv/salt:ro
+      - ./salt/pillar:/home/salt/data/srv/pillar:ro
+      - salt-master-data:/home/salt/data
+      - salt-master-cache:/var/cache/salt
+    ports:
+      - "4505:4505"
+      - "4506:4506"
+
+  # --------------------------------------------------------------------
+  # Application — web + Celery worker
+  # --------------------------------------------------------------------
+
+  web:
+    build:
+      context: .
+      target: base
+    container_name: os-bakery-web
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for postgres + redis…"
+        python manage.py wait_for_services 2>/dev/null || true
+        echo "[entry] applying migrations…"
+        python manage.py migrate --noinput
+        echo "[entry] seeding catalog + recipes…"
+        python manage.py seed_catalog --prune --quiet
+        python manage.py seed_recipes
+        echo "[entry] launching dev server…"
+        python manage.py runserver 0.0.0.0:8000
+    environment:
+      <<: *django-env
+    volumes:
+      - .:/app
+      - build-work:/srv/os-bakery/work
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      target: worker
+    container_name: os-bakery-worker
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for migrations from web…"
+        for i in $$(seq 1 30); do
+          if python manage.py migrate --check 2>/dev/null; then
+            break
+          fi
+          sleep 2
+        done
+        echo "[entry] starting celery worker…"
+        celery -A osbakery worker -l info -Q builds,default --concurrency 2
+    environment:
+      <<: *django-env
+    volumes:
+      - .:/app
+      - build-work:/srv/os-bakery/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  salt-master-data:
+  salt-master-cache:
+  build-work:
