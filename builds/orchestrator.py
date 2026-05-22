@@ -54,14 +54,42 @@ def _prepare_workspace(build: BuildRequest) -> BuildContext:
     work_dir.mkdir(parents=True, exist_ok=True)
 
     upstream = build.upstream_image
-    if not upstream.local_path:
-        raise RuntimeError(
-            f"Upstream image {upstream} has no local_path — refresh it with Packer first."
-        )
+    cached_local = Path(upstream.local_path) if upstream.local_path else None
 
-    base_image = Path(upstream.local_path)
-    if not base_image.exists():
-        raise FileNotFoundError(f"Base image missing on disk: {base_image}")
+    if cached_local and cached_local.exists():
+        base_image = cached_local
+    elif settings.DEBUG:
+        # Dev mode — Packer hasn't refreshed this image's local mirror
+        # yet. Generate a small placeholder so the rest of the pipeline
+        # (provision → pack → publish to S3 + token) can run end-to-end
+        # without requiring a multi-GB upstream fetch. The placeholder is
+        # clearly labelled so a downstream consumer doesn't mistake it
+        # for a real image.
+        placeholder_mb = int(getattr(settings, "BAKERY_PLACEHOLDER_IMAGE_MB", 2))
+        base_image = work_dir / "placeholder-base.img"
+        marker = (
+            f"OS-BAKERY PLACEHOLDER IMAGE\n"
+            f"-----------------------------------------\n"
+            f"build_id     {build.id}\n"
+            f"recipe       {build.recipe_version.recipe.slug}\n"
+            f"upstream     {upstream}\n"
+            f"hardware     {build.hardware_target.slug}\n"
+            f"NOT a real OS image. Packer hasn't refreshed local_path yet.\n"
+        ).encode("utf-8")
+        with base_image.open("wb") as fh:
+            fh.write(marker)
+            fh.write(b"\0" * (placeholder_mb * 1024 * 1024 - len(marker)))
+        _emit(
+            build, "prepare",
+            f"Generated {placeholder_mb} MiB placeholder image — Packer "
+            f"hasn't materialised {upstream}.local_path yet (DEBUG=True).",
+            level="warning",
+        )
+    else:
+        raise RuntimeError(
+            f"Upstream image {upstream} has no local_path — "
+            f"refresh it with Packer first."
+        )
 
     target_image = work_dir / f"{build.id}.img"
     shutil.copy2(base_image, target_image)
