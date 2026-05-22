@@ -214,7 +214,7 @@ services:
       - |
         echo "[entry] waiting for web migrations…"
         for i in $$(seq 1 30); do
-          if python manage.py migrate --check 2>/dev/null; then break; fi
+          if python3 manage.py migrate --check 2>/dev/null; then break; fi
           sleep 2
         done
         echo "[entry] starting celery worker-packer-arm…"
@@ -222,14 +222,14 @@ services:
             -Q builds-packer-arm --concurrency 1
     environment:
       <<: *django-env
-    # privileged + host docker socket so the worker can call out to the
-    # cznewt/packer-arm-tools container (which itself does the chroot +
-    # qemu-aarch64-static + salt-call dance).
+    # --privileged is still needed for loop-device + kpartx + chroot,
+    # but no Docker socket: the worker IS the packer-arm-tools image,
+    # so the chroot + qemu-aarch64-static + Packer ARM bake all happen
+    # in-process.
     privileged: true
     volumes:
       - .:/app
       - build-work:/app/storage/work
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy

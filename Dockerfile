@@ -113,22 +113,36 @@ CMD ["sh", "-c", "celery -A osbakery worker \
         --concurrency ${CELERY_CONCURRENCY}"]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# worker-packer-arm — shells out to packer-arm-tools for ARM bakes
+# worker-packer-arm — does ARM bakes IN-PROCESS, no sibling Docker container.
+#                     Built off our python:3.12 `base` so the Django/Celery
+#                     stack is shared with the other workers; the chroot +
+#                     qemu-aarch64-static + Packer ARM toolchain is pulled
+#                     in via apt + COPY-from cznewt/packer-arm-tools (just
+#                     the packer binary, the ARM builder plugin, and the
+#                     JSON device presets — not Ubuntu 22.04 underneath).
 # ──────────────────────────────────────────────────────────────────────────────
 FROM base AS worker-packer-arm
 
-# Just enough to talk to the host Docker socket + decompress upstream xz.
-# The heavy lifting (chroot + qemu-aarch64-static + salt-call) happens
-# inside the cznewt/packer-arm-tools container that this worker spawns.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        xz-utils \
-        gzip \
-        sudo \
-        docker.io \
+        xz-utils gzip unzip zip \
+        qemu-utils qemu-user-static binfmt-support \
+        kpartx parted dosfstools e2fsprogs libarchive-tools \
+        sudo rsync zerofree libcap2-bin udev \
     && rm -rf /var/lib/apt/lists/*
 
-ENV CELERY_CONCURRENCY=1 \
+# Pull just the Packer binary + ARM builder plugin + device-preset JSON
+# files out of cznewt's published image. Cuts ~500 MB of unused Ubuntu
+# rootfs vs. basing the whole worker off it, and keeps our Python 3.12.
+COPY --from=docker.io/cznewt/packer-arm-tools:latest /usr/bin/packer /usr/bin/packer
+COPY --from=docker.io/cznewt/packer-arm-tools:latest /usr/bin/packer-builder-arm /usr/bin/packer-builder-arm
+COPY --from=docker.io/cznewt/packer-arm-tools:latest /configs /opt/packer-arm-tools/configs
+
+ENV PACKER_LOG=0 \
+    PACKER_CACHE_DIR=/var/cache/packer \
+    PACKER_PLUGIN_PATH=/usr/bin \
+    PACKER_ARM_TOOLS_PRESETS=/opt/packer-arm-tools/configs \
+    CELERY_CONCURRENCY=1 \
     CELERY_QUEUES=builds-packer-arm
 
 CMD ["sh", "-c", "celery -A osbakery worker \
