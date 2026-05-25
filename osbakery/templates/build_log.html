@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Build log · {{ build.recipe_version.recipe.slug }} · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern { background-image: linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px); background-size: 32px 32px; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+  <div class="max-w-5xl mx-auto px-6 md:px-10">
+    <header class="py-8 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold">{{ build.recipe_version.recipe.slug }}
+          <span class="text-stone-400 font-mono text-base">{{ build.hardware_target.slug }}</span>
+        </h1>
+        <p class="text-stone-500 text-sm mt-1 font-mono">
+          {{ build.id }} ·
+          {% if build.status == 'succeeded' %}<span class="text-emerald-700">{{ build.status }}</span>
+          {% elif build.status == 'failed' %}<span class="text-red-700">{{ build.status }}</span>
+          {% else %}<span class="text-amber-600">{{ build.status }}</span>{% endif %}
+          {% if build.cluster_id %} · {{ build.cluster.tenant.slug }}/{{ build.cluster.slug }}{% endif %}
+        </p>
+      </div>
+      <nav class="text-sm font-mono text-stone-500 flex gap-4">
+        <a href="/baked/" class="hover:text-stone-900">← baked images</a>
+        <a href="/" class="hover:text-stone-900">home</a>
+      </nav>
+    </header>
+
+    <main class="pb-24 space-y-6">
+      {% if token %}
+      <a href="/d/{{ token }}/" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↓ Download artifact</a>
+      {% endif %}
+      {% if build.failure_reason %}
+      <div class="rounded-md border border-red-300 bg-red-50 text-red-800 px-4 py-3 text-sm font-mono">{{ build.failure_reason }}</div>
+      {% endif %}
+
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium">Timeline <span class="text-stone-400 font-mono text-sm">({{ events|length }} events)</span></div>
+        <ol class="divide-y divide-stone-100">
+          {% for e in events %}
+          <li class="px-5 py-3">
+            <div class="flex items-center gap-3 text-sm">
+              <span class="font-mono text-xs text-stone-400 w-20">{{ e.at|date:"H:i:s" }}</span>
+              {% if e.level == 'error' %}<span class="text-[10px] uppercase font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700">{{ e.phase }}</span>
+              {% elif e.level == 'warning' %}<span class="text-[10px] uppercase font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{{ e.phase }}</span>
+              {% else %}<span class="text-[10px] uppercase font-medium px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">{{ e.phase }}</span>{% endif %}
+              <span class="text-stone-700">{{ e.message }}</span>
+            </div>
+            {% if e.output %}
+            <pre class="mt-2 ml-20 text-xs text-stone-600 bg-stone-50 rounded p-3 overflow-x-auto whitespace-pre-wrap">{{ e.output }}</pre>
+            {% endif %}
+          </li>
+          {% empty %}
+          <li class="px-5 py-10 text-center text-stone-500 text-sm">No events logged for this build.</li>
+          {% endfor %}
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

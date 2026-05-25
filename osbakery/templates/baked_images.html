@@ -78,13 +78,15 @@
                 {% if r.size_bytes %}{{ r.size_bytes|filesizeformat }}{% else %}<span class="text-stone-400">—</span>{% endif %}
               </td>
               <td class="px-4 py-3">
-                {% if r.token %}
+                <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
+                  {% if r.token %}
                   <a href="/d/{{ r.token }}/"
                      data-toast="Downloading {{ r.recipe }} ({{ r.target }})…" data-toast-level="success"
-                     class="inline-flex items-center gap-1 text-xs font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 hover:text-stone-900">↓ Download</a>
-                {% else %}
-                  <span class="text-xs text-stone-400">—</span>
-                {% endif %}
+                     class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">↓ Download</a>
+                  {% endif %}
+                  <a href="{% url 'build_log' r.id %}"
+                     class="px-2 py-1 text-stone-700 {% if r.token %}border-l border-stone-300{% endif %} hover:bg-stone-100 hover:text-stone-900">≡ Log</a>
+                </span>
               </td>
             </tr>
             {% empty %}

@@ -79,11 +79,33 @@
         <summary class="px-5 py-3 cursor-pointer font-medium hover:bg-stone-50 rounded-xl">✎ Edit cluster</summary>
         <form method="post" action="{% url 'cluster_edit' cluster.slug %}" class="px-5 pb-5 pt-2 space-y-3">
           {% csrf_token %}
-          <div>
-            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Name</label>
-            <input type="text" name="name" value="{{ cluster.name }}"
-                   class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Name</label>
+              <input type="text" name="name" value="{{ cluster.name }}" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Slug</label>
+              <input type="text" name="slug" value="{{ cluster.slug }}" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Kind</label>
+              <select name="kind" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+                {% for value, label in kinds %}<option value="{{ value }}" {% if value == cluster.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Tags <span class="normal-case text-stone-400">(comma-separated)</span></label>
+              <input type="text" name="tags" value="{{ tags_str }}" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+            </div>
           </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Notes</label>
+            <textarea name="notes" rows="2" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">{{ cluster.notes }}</textarea>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-stone-600">
+            <input type="checkbox" name="is_active" {% if cluster.is_active %}checked{% endif %}> Active
+          </label>
           <div>
             <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Metadata (YAML)</label>
             <textarea name="metadata_yaml" rows="16" spellcheck="false"

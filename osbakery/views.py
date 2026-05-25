@@ -462,6 +462,35 @@ def baked_images(request: HttpRequest) -> HttpResponse:
     return render(request, "baked_images.html", context)
 
 
+def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
+    """A baked image's build log — the BuildEvent timeline + captured output."""
+    build = get_object_or_404(
+        BuildRequest.objects.select_related(
+            "recipe_version__recipe__operating_system",
+            "hardware_target", "cluster__tenant", "artifact",
+        ).prefetch_related("events", "artifact__tokens"),
+        pk=build_id,
+    )
+    events = []
+    for e in build.events.order_by("at"):
+        data = e.data or {}
+        events.append({
+            "at": e.at,
+            "phase": e.phase,
+            "level": e.level,
+            "message": e.message,
+            "output": data.get("output_tail") or data.get("stdout_tail") or "",
+        })
+    art = getattr(build, "artifact", None)
+    tok = art.tokens.first() if art else None
+    return render(request, "build_log.html", {
+        "build": build,
+        "events": events,
+        "artifact": art,
+        "token": tok.token if tok else None,
+    })
+
+
 def clusters(request: HttpRequest) -> HttpResponse:
     """Clusters as cards; each links to baked images filtered to that cluster."""
     from django.db.models import Count, Q
@@ -544,6 +573,8 @@ def cluster_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "param_count": len(params) if isinstance(params, dict) else 0,
         "baked": baked,
         "builds": builds,
+        "kinds": Cluster.Kind.choices,
+        "tags_str": ", ".join(cluster.tags or []),
     })
 
 
@@ -573,8 +604,10 @@ def cluster_create(request: HttpRequest) -> HttpResponse:
         messages.error(request, f"A cluster with slug '{slug}' already exists.")
         return redirect("clusters")
     tenant = get_object_or_404(Tenant, pk=tenant_id)
+    tags = [t.strip() for t in (request.POST.get("tags") or "").split(",") if t.strip()]
     cluster = Cluster.objects.create(
         tenant=tenant, slug=slug, name=name, kind=kind, parameters=parsed,
+        tags=tags, notes=request.POST.get("notes", ""),
     )
     messages.success(request, f"Created cluster {cluster.name}.")
     return redirect("cluster_detail", slug=cluster.slug)
@@ -582,11 +615,18 @@ def cluster_create(request: HttpRequest) -> HttpResponse:
 
 @require_POST
 def cluster_edit(request: HttpRequest, slug: str) -> HttpResponse:
-    """Update a cluster: rename + replace its metadata from a YAML textarea."""
+    """Update all editable cluster params: slug, name, kind, tags, notes,
+    active, and the metadata (YAML)."""
     import yaml
+    from django.utils.text import slugify
 
     cluster = get_object_or_404(Cluster, slug=slug)
     name = (request.POST.get("name") or "").strip()
+    new_slug = slugify((request.POST.get("slug") or "").strip()) or cluster.slug
+    kind = (request.POST.get("kind") or "").strip() or cluster.kind
+    notes = request.POST.get("notes", "")
+    is_active = request.POST.get("is_active") == "on"
+    tags = [t.strip() for t in (request.POST.get("tags") or "").split(",") if t.strip()]
     raw = request.POST.get("metadata_yaml", "")
     try:
         parsed = yaml.safe_load(raw) or {}
@@ -595,12 +635,26 @@ def cluster_edit(request: HttpRequest, slug: str) -> HttpResponse:
     except (yaml.YAMLError, ValueError) as exc:
         messages.error(request, f"Invalid YAML — not saved: {exc}")
         return redirect("cluster_detail", slug=slug)
+    # Slug is unique per tenant; guard against collisions on rename.
+    if new_slug != cluster.slug and Cluster.objects.filter(
+        tenant=cluster.tenant, slug=new_slug,
+    ).exclude(pk=cluster.pk).exists():
+        messages.error(request, f"Slug '{new_slug}' already exists in this tenant.")
+        return redirect("cluster_detail", slug=slug)
     if name:
         cluster.name = name
+    cluster.slug = new_slug
+    cluster.kind = kind
+    cluster.notes = notes
+    cluster.is_active = is_active
+    cluster.tags = tags
     cluster.parameters = parsed
-    cluster.save(update_fields=["name", "parameters", "updated_at"])
+    cluster.save(update_fields=[
+        "name", "slug", "kind", "notes", "is_active", "tags",
+        "parameters", "updated_at",
+    ])
     messages.success(request, f"Saved {cluster.name} ({len(parsed)} metadata keys).")
-    return redirect("cluster_detail", slug=slug)
+    return redirect("cluster_detail", slug=cluster.slug)
 
 
 @require_POST

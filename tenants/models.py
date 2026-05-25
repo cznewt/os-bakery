@@ -98,6 +98,10 @@ class Cluster(TimestampedModel):
             "`kubernetes.api_endpoint`, `salt.master`, `mqtt.broker`."
         ),
     )
+    tags = models.JSONField(
+        default=list, blank=True,
+        help_text="Free-form labels for filtering/grouping, e.g. ['prod', 'prg'].",
+    )
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 

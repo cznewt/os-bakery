@@ -62,6 +62,14 @@
               {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
             </select>
           </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Tags <span class="normal-case text-stone-400">(comma-separated)</span></label>
+            <input type="text" name="tags" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Notes</label>
+            <input type="text" name="notes" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+          </div>
           <div class="md:col-span-2">
             <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Metadata (YAML, optional)</label>
             <textarea name="metadata_yaml" rows="6" spellcheck="false" placeholder="key: value" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-xs"></textarea>
