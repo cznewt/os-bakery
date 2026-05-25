@@ -853,12 +853,18 @@ class Command(BaseCommand):
                     defaults=dict(codename=rseed.codename,
                                   is_default=rseed.is_default),
                 )
-                # Backfill release date: date-versioned OSes (raspios) carry it
-                # in the version; others come from a known-dates map.
+                # get_or_create defaults only apply on create — keep codename
+                # and the backfilled release date in sync for existing rows too.
+                changed: list[str] = []
+                if rseed.codename and obj.codename != rseed.codename:
+                    obj.codename = rseed.codename
+                    changed.append("codename")
                 rel_date = _release_date(rseed.os_slug, rseed.version)
                 if rel_date and obj.released_on != rel_date:
                     obj.released_on = rel_date
-                    obj.save(update_fields=["released_on"])
+                    changed.append("released_on")
+                if changed:
+                    obj.save(update_fields=changed)
                 release_key[(rseed.os_slug, rseed.version, rseed.channel)] = obj
                 report["release"] += 1
                 report["release+"] += int(created)
