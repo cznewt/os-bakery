@@ -71,7 +71,7 @@
 
     <main class="pb-24 space-y-10">
       {% for group in groups %}
-      <section class="rounded-2xl border border-stone-200 overflow-hidden bg-white"
+      <section class="rounded-2xl border border-stone-200 bg-white"
                style="border-top: 3px solid {{ group.accent }}">
         <header class="px-6 py-4 flex items-center gap-3 border-b border-stone-100">
           <div class="w-10 h-10 rounded-lg flex items-center justify-center"
@@ -91,7 +91,7 @@
           <span class="text-sm text-stone-500">{{ group.rows|length }} image{{ group.rows|length|pluralize }}</span>
         </header>
 
-        <div class="overflow-x-auto">
+        <div>
           <table class="w-full text-sm">
             <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
               <tr>
@@ -153,59 +153,39 @@
                   {% endif %}
                 </td>
                 <td class="px-4 py-3">
-                  <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
-    {% if img.is_cached %}
-                    <a href="{% if img.public_url %}{{ img.public_url }}{% else %}{% url 'download_base_image' img.pk %}{% endif %}"
-                       title="Download the mirrored image from the S3 artifact store"
-                       data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…"
-                       data-toast-level="success"
-                       class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">
-                      ↓ Download
-                    </a>
-                    {% else %}
-                    <a href="{{ img.source_url }}" target="_blank" rel="noopener"
-                       title="Not mirrored — download from the upstream source: {{ img.source_url }}"
-                       data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} from upstream…"
-                       data-toast-level="info"
-                       class="px-2 py-1 text-amber-700 hover:bg-amber-50">
-                      ↓ Download
-                    </a>
-                    {% endif %}
-                    <a href="{% url 'bake_index' %}?os={{ img.release.operating_system.slug }}"
-                       title="Start a new build from this base image's OS"
-                       class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100 hover:text-stone-900">
-                      + Bake
-                    </a>
-                    {% if img.is_syncing %}
-                    <span class="px-2 py-1 text-sky-600 border-l border-stone-300 inline-flex items-center gap-1">
-                      <span class="animate-pulse">⟳ Syncing…</span>
-                    </span>
-                    {% elif not img.is_cached %}
-                    <form method="post" action="{% url 'sync_base_image' img.pk %}" class="contents">
-                      {% csrf_token %}
-                      <button type="submit"
-                              title="Mirror this image into the S3 artifact store (background job)"
-                              data-toast="Syncing {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }} — mirroring in background…"
-                              data-toast-level="info"
-                              class="px-2 py-1 text-sky-700 border-l border-stone-300 hover:bg-sky-50">
-                        ⟳ Sync
-                      </button>
-                    </form>
-                    {% endif %}
-                    {% if img.is_cached %}
-                    <form method="post" action="{% url 'drop_base_image' img.pk %}" class="contents"
-                          onsubmit="return confirm('Drop the local sync for {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }}? The mirrored copy is deleted from the artifact store.');">
-                      {% csrf_token %}
-                      <button type="submit"
-                              title="Delete the mirrored copy from the artifact store (revert to remote)"
-                              data-toast="Dropping local sync for {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…"
-                              data-toast-level="warning"
-                              class="px-2 py-1 text-red-700 border-l border-stone-300 hover:bg-red-50">
-                        ✕ Drop
-                      </button>
-                    </form>
-                    {% endif %}
-                  </span>
+                  <details class="relative inline-block text-xs">
+                    <summary class="cursor-pointer select-none font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 inline-flex items-center gap-1">Actions ▾</summary>
+                    <div class="absolute right-0 mt-1 w-48 bg-white border border-stone-200 rounded-lg shadow-lg z-20 py-1 flex flex-col">
+                      {% if img.is_cached %}
+                      <a href="{% if img.public_url %}{{ img.public_url }}{% else %}{% url 'download_base_image' img.pk %}{% endif %}"
+                         data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…" data-toast-level="success"
+                         class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">↓ Download (S3)</a>
+                      {% else %}
+                      <a href="{{ img.source_url }}" target="_blank" rel="noopener"
+                         data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} from upstream…" data-toast-level="info"
+                         class="px-3 py-1.5 text-amber-700 hover:bg-amber-50">↓ Download (source)</a>
+                      {% endif %}
+                      <a href="{% url 'bake_index' %}?os={{ img.release.operating_system.slug }}"
+                         class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">+ Bake new</a>
+                      {% if img.is_syncing %}
+                      <span class="px-3 py-1.5 text-sky-600"><span class="animate-pulse">⟳ Syncing…</span></span>
+                      {% elif not img.is_cached %}
+                      <form method="post" action="{% url 'sync_base_image' img.pk %}">{% csrf_token %}
+                        <button type="submit"
+                                data-toast="Syncing {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }} — mirroring in background…" data-toast-level="info"
+                                class="w-full text-left px-3 py-1.5 text-sky-700 hover:bg-sky-50">⟳ Sync</button>
+                      </form>
+                      {% endif %}
+                      {% if img.is_cached %}
+                      <form method="post" action="{% url 'drop_base_image' img.pk %}"
+                            onsubmit="return confirm('Drop the local sync for {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }}? The mirrored copy is deleted from the artifact store.');">{% csrf_token %}
+                        <button type="submit"
+                                data-toast="Dropping local sync for {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…" data-toast-level="warning"
+                                class="w-full text-left px-3 py-1.5 text-red-700 hover:bg-red-50">✕ Drop</button>
+                      </form>
+                      {% endif %}
+                    </div>
+                  </details>
                 </td>
               </tr>
               {% endfor %}
