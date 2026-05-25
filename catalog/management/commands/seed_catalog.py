@@ -305,7 +305,9 @@ RELEASES: list[ReleaseSeed] = [
     ReleaseSeed("raspios", "2024-07-04", "stable", codename="Bookworm"),
     ReleaseSeed("raspios", "2024-11-19", "stable", codename="Bookworm"),
     ReleaseSeed("raspios", "2025-03-15", "stable", codename="Bookworm"),
-    ReleaseSeed("raspios", "2025-05-13", "stable", codename="Bookworm",
+    ReleaseSeed("raspios", "2025-05-13", "stable", codename="Bookworm"),
+    # Latest — Raspberry Pi OS moved to Debian 13 (Trixie).
+    ReleaseSeed("raspios", "2026-04-21", "stable", codename="Trixie",
                 is_default=True),
     # Home Assistant OS — only the current major is supported.
     ReleaseSeed("haos", "17.1", "stable", is_default=True),
@@ -603,6 +605,7 @@ def _images() -> list[ImageSeed]:
         ("2024-11-19", "bookworm"),
         ("2025-03-15", "bookworm"),
         ("2025-05-13", "bookworm"),
+        ("2026-04-21", "trixie"),
     ]
     for date, codename in raspios_dates:
         desktop_url = _RASPIOS_DESKTOP.format(date=date, codename=codename)

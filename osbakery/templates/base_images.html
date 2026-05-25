@@ -29,6 +29,17 @@
 </head>
 <body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
 
+  <!-- Growl/toast notifications (top-right). Server messages render on load;
+       client-side toasts fire on Download/Sync clicks via showToast(). -->
+  <div id="toasts" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-80"></div>
+  {% if messages %}
+  <script>
+    window.__serverMessages = [
+      {% for m in messages %}{level: "{{ m.tags }}", text: "{{ m.message|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}
+    ];
+  </script>
+  {% endif %}
+
   <div class="max-w-7xl mx-auto px-6 md:px-10">
 
     <header class="pt-10 pb-8">
@@ -136,28 +147,34 @@
                     {% if img.is_cached %}
                     <a href="{% url 'download_base_image' img.pk %}"
                        title="Download the mirrored image from the S3 artifact store"
+                       data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…"
+                       data-toast-level="success"
                        class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">
-                      ↓ download
+                      ↓ Download
                     </a>
                     {% else %}
                     <a href="{{ img.source_url }}" target="_blank" rel="noopener"
                        title="Not mirrored — download from the upstream source: {{ img.source_url }}"
+                       data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} from upstream…"
+                       data-toast-level="info"
                        class="px-2 py-1 text-amber-700 hover:bg-amber-50">
-                      ↓ download
+                      ↓ Download
                     </a>
                     {% endif %}
                     <a href="{% url 'bake_index' %}?os={{ img.release.operating_system.slug }}"
                        title="Start a new build from this base image's OS"
                        class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100 hover:text-stone-900">
-                      + bake new
+                      + Bake
                     </a>
                     {% if not img.is_cached %}
                     <form method="post" action="{% url 'sync_base_image' img.pk %}" class="contents">
                       {% csrf_token %}
                       <button type="submit"
                               title="Mirror this image into the S3 artifact store (background job)"
+                              data-toast="Syncing {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }} — mirroring in background…"
+                              data-toast-level="info"
                               class="px-2 py-1 text-sky-700 border-l border-stone-300 hover:bg-sky-50">
-                        ⟳ sync
+                        ⟳ Sync
                       </button>
                     </form>
                     {% endif %}
@@ -185,5 +202,34 @@
       </span>
     </footer>
   </div>
+
+  <script>
+    // Minimal growl: showToast(text, level) → auto-dismissing card top-right.
+    function showToast(text, level) {
+      level = level || "info";
+      const colors = {
+        success: "border-emerald-300 bg-emerald-50 text-emerald-800",
+        info:    "border-sky-300 bg-sky-50 text-sky-800",
+        warning: "border-amber-300 bg-amber-50 text-amber-800",
+        error:   "border-red-300 bg-red-50 text-red-800",
+      };
+      const el = document.createElement("div");
+      el.className = "rounded-md border px-3 py-2 text-sm shadow-sm transition-all duration-300 opacity-0 translate-x-2 " + (colors[level] || colors.info);
+      el.textContent = text;
+      document.getElementById("toasts").appendChild(el);
+      requestAnimationFrame(() => { el.classList.remove("opacity-0", "translate-x-2"); });
+      setTimeout(() => {
+        el.classList.add("opacity-0", "translate-x-2");
+        setTimeout(() => el.remove(), 300);
+      }, 4500);
+    }
+    // Render any server-side Django messages on load.
+    (window.__serverMessages || []).forEach(m => showToast(m.text, m.level));
+    // Fire immediate feedback when an action button is clicked.
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest("[data-toast]");
+      if (a) showToast(a.getAttribute("data-toast"), a.getAttribute("data-toast-level") || "info");
+    });
+  </script>
 </body>
 </html>
