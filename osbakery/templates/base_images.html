@@ -189,6 +189,19 @@
                       </button>
                     </form>
                     {% endif %}
+                    {% if img.is_cached %}
+                    <form method="post" action="{% url 'drop_base_image' img.pk %}" class="contents"
+                          onsubmit="return confirm('Drop the local sync for {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }}? The mirrored copy is deleted from the artifact store.');">
+                      {% csrf_token %}
+                      <button type="submit"
+                              title="Delete the mirrored copy from the artifact store (revert to remote)"
+                              data-toast="Dropping local sync for {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…"
+                              data-toast-level="warning"
+                              class="px-2 py-1 text-red-700 border-l border-stone-300 hover:bg-red-50">
+                        ✕ Drop
+                      </button>
+                    </form>
+                    {% endif %}
                   </span>
                 </td>
               </tr>

@@ -614,6 +614,30 @@ def cluster_delete(request: HttpRequest, slug: str) -> HttpResponse:
 
 
 @require_POST
+def drop_base_image(request: HttpRequest, pk: int) -> HttpResponse:
+    """Drop a base image's local sync — delete the mirrored blob from the
+    artifact store and revert the row to 'remote'."""
+    img = get_object_or_404(UpstreamImage, pk=pk)
+    if not img.cache_storage_key:
+        messages.error(request, "Not mirrored — nothing to drop.")
+        return redirect("base_images")
+    key = img.cache_storage_key
+    storage = storages["artifacts"]
+    try:
+        if storage.exists(key):
+            storage.delete(key)
+    except Exception as exc:  # noqa: BLE001 - surface storage errors to the UI
+        messages.error(request, f"Failed to remove the mirrored object: {exc}")
+        return redirect("base_images")
+    img.cache_storage_key = ""
+    img.mirror_started_at = None
+    img.last_synced_at = None
+    img.save(update_fields=["cache_storage_key", "mirror_started_at", "last_synced_at"])
+    messages.success(request, f"Dropped local sync for {img} — removed from the artifact store.")
+    return redirect("base_images")
+
+
+@require_POST
 def sync_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     """Queue a background job to mirror an upstream image into the artifact store.
 
