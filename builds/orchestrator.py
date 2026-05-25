@@ -198,16 +198,43 @@ def _write_top(ctx: BuildContext) -> None:
     ctx.top_path.write_text(yaml.safe_dump({"base": {"*": states}}))
 
 
-def _mount_and_provision(ctx: BuildContext) -> None:
-    """Provision the image: try registered backends, fall back to a no-op.
+def _has_salt_to_apply(ctx: BuildContext) -> bool:
+    """Does this build actually have Salt states to bake in?
 
-    Today the only backend is ``packer_arm_tools`` — it shells out to the
-    user's existing chroot+qemu Docker action. When more backends land (a
-    native libguestfs path, an x86-side `losetup` path, a HAOS file-injector
-    for the few config-partition cases), this is where they plug in.
+    True when the recipe ships an explicit top, named states, or the build
+    asked for a salt bake-in via ``install_salt_minion``. Avoids running a
+    masterless highstate that would only error on a missing ``<slug>.sls``.
     """
-    from builds.provisioners import packer_arm_tools  # local import for testability
+    rv = ctx.build.recipe_version
+    if (rv.salt_top_yaml or "").strip():
+        return True
+    if list(rv.salt_states or []):
+        return True
+    return bool((ctx.build.option_values or {}).get("install_salt_minion"))
 
+
+def _mount_and_provision(ctx: BuildContext) -> None:
+    """Provision the image: masterless ``salt-call --local`` is the primary path.
+
+    The ``local_salt`` backend loop-mounts the image and runs ``salt-call
+    --local`` in a (qemu-emulated, for foreign arch) chroot — no Salt master.
+    ``packer_arm_tools`` is kept as a legacy fallback for environments where
+    the in-house chroot path isn't available. If neither runs, the image ships
+    as the unmodified upstream base.
+    """
+    from builds.provisioners import local_salt, packer_arm_tools
+
+    if _has_salt_to_apply(ctx):
+        if local_salt.provision(ctx):
+            return
+    else:
+        _emit(
+            ctx.build, "salt",
+            "Recipe defines no Salt states — skipping masterless bake.",
+            level="info",
+        )
+
+    # Legacy backend (master-connected minion via packer-arm-tools chroot).
     if packer_arm_tools.provision(ctx):
         return
 

@@ -1,0 +1,303 @@
+# Production-ish compose stack for os-bakery — pulls PREBUILT images from GHCR
+# instead of building from source. Intended for a single-host deploy (e.g.
+# 10.50.20.226) where the repo is NOT checked out.
+#
+#   Quick start (on the host):
+#     # 1. put a real .env next to this file (see .env.prod.example)
+#     # 2. authenticate to GHCR if the packages are private:
+#     #      echo $GHCR_PAT | docker login ghcr.io -u <user> --password-stdin
+#     docker compose -f compose.prod.yaml pull
+#     docker compose -f compose.prod.yaml up -d
+#     docker compose -f compose.prod.yaml logs -f web worker-packer
+#
+# Image source: .github/workflows/docker.yml publishes
+#     ghcr.io/cznewt/os-bakery-web:<tag>
+#     ghcr.io/cznewt/os-bakery-worker:<tag>     (== the worker-packer target)
+# Override registry/tag via OSBAKERY_REGISTRY / OSBAKERY_IMAGE_TAG in .env.
+#
+# WORKERS: all four are included — web + worker-packer (builds-packer,builds,
+# default) + worker-packer-arm (builds-packer-arm, privileged) + worker-esphome
+# (builds-esphome). Their images are built/pushed manually for now (CI's
+# docker.yml only publishes web + worker); to make CI publish all of them,
+# extend its matrix to the four Dockerfile targets and drop the salt-common
+# apt line that failed the original worker build.
+#
+# STATIC FILES: the web image has no WhiteNoise and DEBUG defaults to false here,
+# so Django will not serve /static/ itself. The admin/UI will be unstyled unless
+# you front this with a reverse proxy (nginx/Caddy) mapping /static/ -> the
+# image's /app/staticfiles, or add whitenoise to the image. Set DJANGO_DEBUG=true
+# in .env only as a stopgap for an internal box.
+#
+# SECURITY: unlike compose.yaml, nothing here is hardcoded-insecure. All secrets
+# come from .env. Salt master auto-accept is OFF — you must accept minion keys
+# explicitly (salt-key -A inside the salt-master container).
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-django-env: &django-env
+  # Fixed inter-service wiring (container DNS names). Secrets/host-specific
+  # values come from .env via env_file below; these are stable defaults that a
+  # deployer should not need to touch.
+  DATABASE_URL: postgres://osbakery:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/osbakery
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  ARTIFACT_STORAGE_BACKEND: s3
+  AWS_STORAGE_BUCKET_NAME: os-bakery-artifacts
+  AWS_S3_ENDPOINT_URL: http://minio:9000
+  AWS_S3_REGION_NAME: us-east-1
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-osbakery}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+  SALT_MASTER_URL: salt-master
+  # ARM bakes: enable the packer-arm-tools chroot+qemu provisioner. Presets are
+  # baked into the worker-packer-arm image at /opt/packer-arm-tools/configs.
+  PACKER_ARM_TOOLS_ENABLED: "true"
+  PACKER_ARM_TOOLS_PRESETS: /opt/packer-arm-tools/configs
+
+services:
+  # --------------------------------------------------------------------
+  # Stateful infrastructure (these pull public images either way)
+  # --------------------------------------------------------------------
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: os-bakery-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: osbakery
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: osbakery
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osbakery -d osbakery"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: os-bakery-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: os-bakery-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-osbakery}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "9000:9000"              # S3 API (artifact downloads)
+      - "127.0.0.1:9001:9001"    # console — localhost-only; tunnel to reach it
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: os-bakery-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          sleep 1
+        done
+        mc mb --ignore-existing local/os-bakery-artifacts
+        mc anonymous set download local/os-bakery-artifacts
+        echo 'MinIO bucket os-bakery-artifacts ready.'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-osbakery}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    restart: "no"
+
+  salt-master:
+    image: ghcr.io/cdalvaro/docker-salt-master:latest
+    container_name: os-bakery-salt-master
+    restart: unless-stopped
+    environment:
+      SALT_LOG_LEVEL: warning
+      SALT_MASTER_SIGN_PUBKEY: "False"
+      # Prod: do NOT auto-accept. Accept keys explicitly with:
+      #   docker compose -f compose.prod.yaml exec salt-master salt-key -A
+      SALT_MASTER_AUTOACCEPT: "False"
+    volumes:
+      - salt-master-data:/home/salt/data
+      - salt-master-cache:/var/cache/salt
+    ports:
+      - "4505:4505"
+      - "4506:4506"
+
+  # --------------------------------------------------------------------
+  # Application — web (gunicorn) + packer worker, both from prebuilt images
+  # --------------------------------------------------------------------
+
+  web:
+    image: ${OSBAKERY_REGISTRY:-ghcr.io/cznewt}/os-bakery-web:${OSBAKERY_IMAGE_TAG:-latest}
+    container_name: os-bakery-web
+    restart: unless-stopped
+    # The prebuilt web image's default CMD is gunicorn only. In prod we still
+    # need migrations + idempotent seed before serving, so override the command
+    # to do that, then exec gunicorn (the image's own default invocation).
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] applying migrations…"
+        until python manage.py migrate --noinput; do
+          echo "[entry] db not ready, retrying in 3s…"; sleep 3
+        done
+        echo "[entry] seeding catalog + recipes + tenants…"
+        python manage.py seed_catalog --prune --quiet
+        python manage.py seed_recipes
+        python manage.py seed_tenants
+        echo "[entry] launching gunicorn…"
+        exec gunicorn osbakery.wsgi:application \
+            --bind 0.0.0.0:8000 \
+            --workers "$${GUNICORN_WORKERS:-4}" \
+            --timeout "$${GUNICORN_TIMEOUT:-60}" \
+            --access-logfile - --error-logfile -
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  worker-packer:
+    image: ${OSBAKERY_REGISTRY:-ghcr.io/cznewt}/os-bakery-worker:${OSBAKERY_IMAGE_TAG:-latest}
+    container_name: os-bakery-worker-packer
+    restart: unless-stopped
+    # The `worker` image (== worker-packer target) already defaults to
+    # `celery … -Q builds-packer,builds,default`. We just gate startup on the
+    # web service having applied migrations.
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for migrations…"
+        for i in $$(seq 1 60); do
+          if python manage.py migrate --check 2>/dev/null; then break; fi
+          sleep 3
+        done
+        echo "[entry] starting celery worker-packer…"
+        exec celery -A osbakery worker -n worker-packer@%h -l info \
+            -Q builds-packer,builds,default --concurrency "$${CELERY_CONCURRENCY:-2}"
+    # Non-ARM packer bakes use loop devices + kpartx + chroot, which need
+    # elevated privileges on the host kernel.
+    privileged: true
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    volumes:
+      - build-work:/app/storage/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  worker-packer-arm:
+    image: ${OSBAKERY_REGISTRY:-ghcr.io/cznewt}/os-bakery-worker-packer-arm:${OSBAKERY_IMAGE_TAG:-latest}
+    container_name: os-bakery-worker-packer-arm
+    restart: unless-stopped
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for migrations…"
+        for i in $$(seq 1 60); do
+          if python manage.py migrate --check 2>/dev/null; then break; fi
+          sleep 3
+        done
+        echo "[entry] starting celery worker-packer-arm…"
+        exec celery -A osbakery worker -n worker-packer-arm@%h -l info \
+            -Q builds-packer-arm --concurrency 1
+    # ARM bakes do loop-device + kpartx + chroot + qemu-aarch64-static binfmt.
+    # Needs privileged; binfmt_misc must be registered on the host kernel (run
+    # once on the host:  docker run --privileged --rm tonistiigi/binfmt --install arm64).
+    privileged: true
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    volumes:
+      - build-work:/app/storage/work
+      # Share the host's live devtmpfs so loopback partition nodes (loop0pN),
+      # created by host udev after `losetup -P`, are visible to the in-process
+      # ARM bake. Without this, the container's private /dev tmpfs never gets
+      # them and the partition mount fails with exit 32.
+      - /dev:/dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  worker-esphome:
+    image: ${OSBAKERY_REGISTRY:-ghcr.io/cznewt}/os-bakery-worker-esphome:${OSBAKERY_IMAGE_TAG:-latest}
+    container_name: os-bakery-worker-esphome
+    restart: unless-stopped
+    command:
+      - sh
+      - -ec
+      - |
+        echo "[entry] waiting for migrations…"
+        for i in $$(seq 1 60); do
+          if python manage.py migrate --check 2>/dev/null; then break; fi
+          sleep 3
+        done
+        echo "[entry] starting celery worker-esphome…"
+        exec celery -A osbakery worker -n worker-esphome@%h -l info \
+            -Q builds-esphome --concurrency 2
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+      PLATFORMIO_CORE_DIR: /var/lib/osbakery/platformio
+    volumes:
+      - build-work:/app/storage/work
+      - esphome-platformio:/var/lib/osbakery/platformio
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  salt-master-data:
+  salt-master-cache:
+  build-work:
+  esphome-platformio:

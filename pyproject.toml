@@ -24,6 +24,7 @@ dependencies = [
     "humanize>=4.10",
     "pydantic>=2.9",
     "markdown>=3.6",
+    "whitenoise>=6.0",
 ]
 
 [project.optional-dependencies]
