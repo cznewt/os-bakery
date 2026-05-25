@@ -141,6 +141,27 @@ def _mount(src: str, dst: Path, *, opts: list[str] | None = None) -> None:
     _sh(["mount", *(opts or []), src, str(dst)])
 
 
+def _boot_mount_rel(rootfs: Path) -> str:
+    """Where the image mounts its firmware/boot partition, per its own fstab.
+
+    Returns a path relative to the rootfs (e.g. "boot/firmware" or "boot").
+    Falls back to "boot/firmware" then "boot" if fstab is unreadable.
+    """
+    fstab = rootfs / "etc/fstab"
+    try:
+        for raw in fstab.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            fields = line.split()
+            if len(fields) >= 3 and "boot" in fields[1] and "vfat" in fields[2]:
+                return fields[1].lstrip("/")
+    except OSError:
+        pass
+    # No explicit vfat boot entry — prefer the bookworm layout if present.
+    return "boot/firmware" if (rootfs / "boot/firmware").is_dir() else "boot"
+
+
 def _bind_pseudo(rootfs: Path) -> list[Path]:
     """Bind the host pseudo-filesystems the chroot needs; return mounted paths."""
     mounted: list[Path] = []
@@ -246,8 +267,14 @@ def provision(ctx: "BuildContext") -> bool:
         _mount(str(root_part), rootfs)
         mounted.append(rootfs)
         if boot_part is not None:
-            _mount(str(boot_part), rootfs / "boot")
-            mounted.append(rootfs / "boot")
+            # Mount the firmware/boot partition where the image's own fstab
+            # expects it — raspios bookworm uses /boot/firmware, older images
+            # and most others use /boot. Honour fstab so states that write
+            # cmdline.txt / config.txt hit the right path.
+            boot_rel = _boot_mount_rel(rootfs)
+            boot_dst = rootfs / boot_rel
+            _mount(str(boot_part), boot_dst)
+            mounted.append(boot_dst)
 
         mounted.extend(_bind_pseudo(rootfs))
 

@@ -25,7 +25,13 @@ base.network.wpa_supplicant:
           key_mgmt=WPA-PSK
         }
 
+# Enable wpa_supplicant@wlan0 by creating the systemd `wants` symlink directly.
+# `service.enabled` calls `systemctl enable`, which can't enumerate a
+# template-instance unit without a running systemd — it errors in a chroot.
+# This symlink is exactly what `systemctl enable` would create, applied offline.
 base.network.wlan0_unit_enabled:
-  service.enabled:
-    - name: wpa_supplicant@wlan0
+  file.symlink:
+    - name: /etc/systemd/system/multi-user.target.wants/wpa_supplicant@wlan0.service
+    - target: /lib/systemd/system/wpa_supplicant@.service
+    - makedirs: True
 {% endif %}

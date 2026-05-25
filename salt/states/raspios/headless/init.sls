@@ -10,6 +10,9 @@ raspios.headless.remove_gui:
         - lxde-core
         - lxde-common
 
+# Disable dphys-swapfile offline by removing its systemd enable symlink.
+# `service.disabled` needs a running systemd; file.absent is chroot-safe and
+# is a no-op if the unit was never enabled.
 raspios.headless.disable_swap_on_sd:
-  service.disabled:
-    - name: dphys-swapfile
+  file.absent:
+    - name: /etc/systemd/system/multi-user.target.wants/dphys-swapfile.service
