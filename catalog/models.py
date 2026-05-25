@@ -74,6 +74,48 @@ class Provisioner(TimestampedModel):
         return self.name
 
 
+class WorkflowStep(TimestampedModel):
+    """One ordered step in a provisioner's bake workflow.
+
+    A bake is rendered into an Argo Workflow: each step is a container image
+    that receives env vars (build params + the step's own ``env``) and hands
+    artifacts to the next step via S3. The default pipeline is
+    fetch-base → provision → pack → push-s3; recipes inherit their
+    provisioner's steps.
+    """
+
+    provisioner = models.ForeignKey(
+        Provisioner, on_delete=models.CASCADE, related_name="steps",
+    )
+    order = models.PositiveSmallIntegerField(default=0)
+    name = models.SlugField(max_length=40, help_text="e.g. fetch-base, provision, pack, push-s3")
+    image = models.CharField(
+        max_length=200,
+        help_text="Container image the step runs, e.g. ghcr.io/cznewt/os-bakery-step-pack:latest",
+    )
+    command = models.JSONField(
+        default=list, blank=True,
+        help_text="Optional command/args override (list of strings).",
+    )
+    env = models.JSONField(
+        default=dict, blank=True,
+        help_text="Extra env vars for this step (merged over the build-wide env).",
+    )
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["provisioner", "order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provisioner", "order"],
+                name="uniq_step_order_per_provisioner",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provisioner.slug}[{self.order}] {self.name}"
+
+
 class HardwareTarget(TimestampedModel):
     """A specific board, SoC, or PC profile we publish images for.
 

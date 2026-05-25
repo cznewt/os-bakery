@@ -7,7 +7,13 @@ from .models import (
     OSRelease,
     Provisioner,
     UpstreamImage,
+    WorkflowStep,
 )
+
+
+class WorkflowStepInline(admin.TabularInline):
+    model = WorkflowStep
+    extra = 0
 
 
 @admin.register(Provisioner)
@@ -15,6 +21,14 @@ class ProvisionerAdmin(admin.ModelAdmin):
     list_display = ("slug", "name", "is_default", "is_active")
     list_filter = ("is_default", "is_active")
     search_fields = ("slug", "name")
+    inlines = [WorkflowStepInline]
+
+
+@admin.register(WorkflowStep)
+class WorkflowStepAdmin(admin.ModelAdmin):
+    list_display = ("provisioner", "order", "name", "image")
+    list_filter = ("provisioner",)
+    ordering = ("provisioner", "order")
 
 
 @admin.register(Architecture)

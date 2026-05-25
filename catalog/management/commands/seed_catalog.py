@@ -65,7 +65,34 @@ from catalog.models import (
     OSRelease,
     Provisioner,
     UpstreamImage,
+    WorkflowStep,
 )
+
+# Default bake workflow per provisioner: ordered container steps that hand the
+# image through S3 (work/<build_id>/…), last step publishes the artifact —
+# rendered into an Argo Workflow per build. Images are placeholders until the
+# per-step images are built/published.
+_STEP_IMG = "ghcr.io/cznewt/os-bakery-step-{}:latest"
+WORKFLOW_STEPS: dict[str, list[tuple[str, str, str]]] = {
+    "salt": [
+        ("fetch-base", _STEP_IMG.format("fetch"), "Fetch + decompress the base image into S3 work/."),
+        ("provision", _STEP_IMG.format("salt"), "salt-call --local against the recipe states in a (qemu) chroot."),
+        ("pack", _STEP_IMG.format("pack"), "Repack the provisioned rootfs to .img.xz."),
+        ("push-s3", _STEP_IMG.format("push"), "Publish the artifact to the bucket + mint a download token."),
+    ],
+    "ansible": [
+        ("fetch-base", _STEP_IMG.format("fetch"), "Fetch + decompress the base image into S3 work/."),
+        ("provision", _STEP_IMG.format("ansible"), "ansible-playbook against the mounted rootfs."),
+        ("pack", _STEP_IMG.format("pack"), "Repack the provisioned rootfs to .img.xz."),
+        ("push-s3", _STEP_IMG.format("push"), "Publish the artifact to the bucket + mint a download token."),
+    ],
+    "cloud-init": [
+        ("fetch-base", _STEP_IMG.format("fetch"), "Fetch + decompress the base image into S3 work/."),
+        ("provision", _STEP_IMG.format("cloud-init"), "Inject cloud-init user-data/config into the image."),
+        ("pack", _STEP_IMG.format("pack"), "Repack the image to .img.xz."),
+        ("push-s3", _STEP_IMG.format("push"), "Publish the artifact to the bucket + mint a download token."),
+    ],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -788,6 +815,12 @@ class Command(BaseCommand):
                 )
                 if not quiet:
                     self._echo("Provisioner", obj.slug, created)
+                # Sync the provisioner's ordered workflow steps.
+                for order, (name, image, desc) in enumerate(WORKFLOW_STEPS.get(pseed["slug"], [])):
+                    WorkflowStep.objects.update_or_create(
+                        provisioner=obj, order=order,
+                        defaults=dict(name=name, image=image, description=desc),
+                    )
 
             arch_by_slug: dict[str, Architecture] = {}
             for seed in ARCHITECTURES:
