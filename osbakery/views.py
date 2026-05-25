@@ -14,6 +14,7 @@ from django.core.files.storage import storages
 from django.db.models import Count, Prefetch
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from builds.models import BuildRequest
 from catalog.models import HardwareTarget, OperatingSystem, OSRelease, UpstreamImage
@@ -400,6 +401,28 @@ def download_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     if img.checksum_sha256:
         response["X-Checksum-SHA256"] = img.checksum_sha256
     return response
+
+
+@require_POST
+def sync_base_image(request: HttpRequest, pk: int) -> HttpResponse:
+    """Queue a background job to mirror an upstream image into the artifact store.
+
+    Enqueues ``catalog.tasks.mirror_upstream_image`` (runs on the packer worker)
+    and redirects back to /images/. The row flips to "mirrored" once the job
+    finishes and ``cache_storage_key`` is set.
+    """
+    img = get_object_or_404(
+        UpstreamImage.objects.select_related("release__operating_system", "hardware_target"),
+        pk=pk,
+    )
+    from catalog.tasks import mirror_upstream_image
+
+    mirror_upstream_image.delay(img.pk)
+    messages.success(
+        request,
+        f"Queued mirror job for {img} — refresh in a few minutes (multi-GB pull).",
+    )
+    return redirect("base_images")
 
 
 # ---------------------------------------------------------------------------

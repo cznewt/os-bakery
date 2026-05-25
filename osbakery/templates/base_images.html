@@ -90,8 +90,9 @@
                 <th class="text-left px-4 py-3 font-medium">Arch</th>
                 <th class="text-left px-4 py-3 font-medium">Variant</th>
                 <th class="text-left px-4 py-3 font-medium">Format</th>
+                <th class="text-left px-4 py-3 font-medium">Size</th>
                 <th class="text-left px-4 py-3 font-medium">Status</th>
-                <th class="text-left px-4 py-3 font-medium">Download</th>
+                <th class="text-left px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-stone-100">
@@ -114,6 +115,9 @@
                   {% if img.variant %}{{ img.variant }}{% else %}<span class="text-stone-400">—</span>{% endif %}
                 </td>
                 <td class="px-4 py-3 font-mono text-stone-600">{{ img.format }}</td>
+                <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">
+                  {% if img.size_bytes %}{{ img.size_bytes|filesizeformat }}{% else %}<span class="text-stone-400">—</span>{% endif %}
+                </td>
                 <td class="px-4 py-3">
                   {% if img.is_cached %}
                     <span class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
@@ -128,19 +132,36 @@
                   {% endif %}
                 </td>
                 <td class="px-4 py-3">
-                  {% if img.is_cached %}
+                  <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
+                    {% if img.is_cached %}
                     <a href="{% url 'download_base_image' img.pk %}"
                        title="Download the mirrored image from the S3 artifact store"
-                       class="inline-flex items-center gap-1 text-xs font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 hover:text-stone-900">
-                      ↓ S3
+                       class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">
+                      ↓ download
                     </a>
-                  {% else %}
+                    {% else %}
                     <a href="{{ img.source_url }}" target="_blank" rel="noopener"
                        title="Not mirrored — download from the upstream source: {{ img.source_url }}"
-                       class="inline-flex items-center gap-1 text-xs font-medium text-amber-700 border border-amber-300 rounded px-2 py-1 hover:bg-amber-50">
-                      ↓ source
+                       class="px-2 py-1 text-amber-700 hover:bg-amber-50">
+                      ↓ download
                     </a>
-                  {% endif %}
+                    {% endif %}
+                    <a href="{% url 'bake_index' %}?os={{ img.release.operating_system.slug }}"
+                       title="Start a new build from this base image's OS"
+                       class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100 hover:text-stone-900">
+                      + bake new
+                    </a>
+                    {% if not img.is_cached %}
+                    <form method="post" action="{% url 'sync_base_image' img.pk %}" class="contents">
+                      {% csrf_token %}
+                      <button type="submit"
+                              title="Mirror this image into the S3 artifact store (background job)"
+                              class="px-2 py-1 text-sky-700 border-l border-stone-300 hover:bg-sky-50">
+                        ⟳ sync
+                      </button>
+                    </form>
+                    {% endif %}
+                  </span>
                 </td>
               </tr>
               {% endfor %}

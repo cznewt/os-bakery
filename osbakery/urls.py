@@ -10,6 +10,7 @@ from .views import (
     docs_index,
     download_base_image,
     home,
+    sync_base_image,
 )
 
 urlpatterns = [
@@ -17,6 +18,7 @@ urlpatterns = [
     path("devices/", devices, name="devices"),
     path("images/", base_images, name="base_images"),
     path("images/<int:pk>/download/", download_base_image, name="download_base_image"),
+    path("images/<int:pk>/sync/", sync_base_image, name="sync_base_image"),
     path("bake/", bake_index, name="bake_index"),
     path("bake/<slug:slug>/", bake_recipe, name="bake_recipe"),
     path("docs/", docs_index, name="docs_index"),
