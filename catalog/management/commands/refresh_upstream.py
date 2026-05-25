@@ -21,8 +21,10 @@ from __future__ import annotations
 import gzip
 import hashlib
 import lzma
+import ssl
 import shutil
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -160,8 +162,25 @@ class Command(BaseCommand):
                     "osbakery/1.0 (+https://github.com/cznewt/os-bakery)",
             },
         )
+        try:
+            return self._download(req, dest)
+        except urllib.error.URLError as exc:
+            # Some upstreams (e.g. download.proxmox.com) serve a cert that
+            # fails hostname/chain verification. Retry once without SSL
+            # verification rather than failing the whole sync.
+            reason = getattr(exc, "reason", exc)
+            if isinstance(reason, ssl.SSLError) or isinstance(exc, ssl.SSLError):
+                self.stdout.write(self.style.WARNING(
+                    f"             ↳ SSL verification failed for {url} "
+                    f"({reason}); retrying without verification."
+                ))
+                return self._download(req, dest, context=ssl._create_unverified_context())
+            raise
+
+    def _download(self, req, dest: Path, context=None) -> int:
         size = 0
-        with urllib.request.urlopen(req, timeout=180) as resp, dest.open("wb") as out:
+        with urllib.request.urlopen(req, timeout=180, context=context) as resp, \
+                dest.open("wb") as out:
             while True:
                 chunk = resp.read(1024 * 1024)
                 if not chunk:
