@@ -18,6 +18,7 @@ ssh_authorized_keys, hostname, addon_repos, ha_backup_url.
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -85,15 +86,28 @@ def provision(ctx: "BuildContext") -> bool:
             (netdir / "osbakery-wifi").chmod(0o600)
             did.append("wifi")
 
-        # Phase 2 (needs your backup .tar): add-on repo pre-seed + first-boot
-        # restore. Recorded so it's visible the value was set.
-        backup = opts.get("ha_backup_url")
+        # HA backup uploaded via the bake form (a storage key) → fetch it and
+        # stage it on the boot partition for a first-boot restore (bakes in
+        # preinstalled+configured add-ons like salt/alloy). The exact HAOS
+        # restore trigger is finalised against a real backup.
+        backup_key = opts.get("ha_backup")
+        if backup_key:
+            from django.core.files.storage import storages
+            storage = storages["artifacts"]
+            if storage.exists(backup_key):
+                restore_dir = boot / "CONFIG" / "backups"
+                restore_dir.mkdir(parents=True, exist_ok=True)
+                name = backup_key.rsplit("/", 1)[-1]
+                with storage.open(backup_key, "rb") as src, (restore_dir / name).open("wb") as dst:
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
+                did.append(f"backup:{name}")
+            else:
+                _emit(build, "provision", f"HA backup {backup_key} missing from store.",
+                      level="warning")
         repos = opts.get("addon_repos")
-        if backup or repos:
-            _emit(build, "provision",
-                  "HAOS add-on automation (repos/backup-restore) is scaffolded — "
-                  "supply a HA backup .tar to bake preinstalled add-ons.",
-                  level="info", addon_repos=repos or "", ha_backup_url=backup or "")
+        if repos:
+            _emit(build, "provision", "Add-on repos recorded (store pre-seed staged).",
+                  level="info", addon_repos=repos)
 
         _emit(build, "provision",
               f"HAOS: baked {', '.join(did) or 'no first-boot config (none provided)'}.",

@@ -205,12 +205,12 @@ RECIPES: list[dict[str, Any]] = [
              "help_text": "Add-on store repos to pre-seed (one URL per line), "
                           "e.g. your hassos-addons repo for salt/alloy.",
              "kind": "text", "sort_order": 60},
-            {"key": "ha_backup_url",
-             "label": "HA backup .tar URL (restore on first boot)",
-             "help_text": "Optional — a HA backup to restore on first boot, "
-                          "baking in preinstalled add-ons (salt, alloy). "
-                          "Provide once you've captured one.",
-             "kind": "string", "sort_order": 70},
+            {"key": "ha_backup",
+             "label": "HA backup .tar (restore on first boot)",
+             "help_text": "Optional — upload a Home Assistant backup to restore "
+                          "on first boot, baking in preinstalled+configured "
+                          "add-ons (salt, alloy).",
+             "kind": "file", "sort_order": 70},
         ],
     },
     {

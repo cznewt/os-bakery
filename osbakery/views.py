@@ -924,6 +924,18 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
         else:
             option_values: dict[str, object] = {}
             for opt in options:
+                if opt.kind == "file":
+                    # Upload to the artifact store; stash the key so the
+                    # provisioner can fetch it (e.g. a HAOS backup .tar).
+                    f = request.FILES.get(f"opt_{opt.key}")
+                    if f:
+                        import uuid as _uuid
+                        key = f"uploads/{recipe.slug}/{_uuid.uuid4().hex}-{f.name}"
+                        storages["artifacts"].save(key, f)
+                        option_values[opt.key] = key
+                    else:
+                        option_values[opt.key] = ""
+                    continue
                 raw = request.POST.get(f"opt_{opt.key}", "")
                 if opt.kind == RecipeOptionKind_BOOLEAN:
                     option_values[opt.key] = raw == "on"

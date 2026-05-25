@@ -87,7 +87,7 @@
       {{ error }}
     </div>
     {% else %}
-    <form method="post" class="space-y-8 pb-16">
+    <form method="post" enctype="multipart/form-data" class="space-y-8 pb-16">
       {% csrf_token %}
 
       <fieldset class="bg-white rounded-2xl border border-stone-200 p-6 space-y-4"
@@ -169,6 +169,11 @@
                       rows="4"
                       {% if opt.required %}required{% endif %}
                       {% if opt.default %}placeholder="{{ opt.default }}"{% endif %}></textarea>
+
+          {% elif opt.kind == "file" %}
+            <input type="file" name="opt_{{ opt.key }}" id="opt_{{ opt.key }}"
+                   class="mt-2 block w-full text-sm"
+                   {% if opt.required %}required{% endif %}>
 
           {% elif opt.kind == "boolean" %}
             <label class="mt-2 inline-flex items-center gap-2">
