@@ -273,10 +273,12 @@ def provision(ctx: "BuildContext") -> bool:
             # cmdline.txt / config.txt hit the right path.
             boot_rel = _boot_mount_rel(rootfs)
             boot_dst = rootfs / boot_rel
-            # vfat can't chmod, so mount with umask=0022 → files already appear
-            # as 0644/dirs 0755. Otherwise salt file.managed on the FAT boot
-            # partition fails its mode-enforcement step ("Failed to change mode").
-            _mount(str(boot_part), boot_dst, opts=["-o", "umask=0022"])
+            # vfat can't chmod, so present files as 0644 / dirs 0755 up front so
+            # salt's default mode-enforcement is a no-op. NB: vfat's file base is
+            # 0777, so fmask must be 0133 (0777 & ~0133 = 0644) — a plain
+            # umask=0022 would yield 0755 files and salt would still try (and
+            # fail) to chmod to 0644.
+            _mount(str(boot_part), boot_dst, opts=["-o", "fmask=0133,dmask=0022"])
             mounted.append(boot_dst)
 
         mounted.extend(_bind_pseudo(rootfs))
