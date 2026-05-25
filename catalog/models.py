@@ -42,6 +42,38 @@ class Architecture(TimestampedModel):
         return self.name
 
 
+class Provisioner(TimestampedModel):
+    """How a recipe customizes the base image during a bake.
+
+    The orchestrator dispatches on this: ``salt`` runs ``salt-call --local``
+    (the current/default path); ``ansible`` and ``cloud-init`` are recognized
+    targets for future provisioner backends. All shipped recipes are ``salt``.
+    """
+
+    class Slug(models.TextChoices):
+        SALT = "salt", _("Salt")
+        ANSIBLE = "ansible", _("Ansible")
+        CLOUD_INIT = "cloud-init", _("Cloud-Init")
+
+    slug = models.SlugField(unique=True, max_length=20, choices=Slug.choices)
+    name = models.CharField(max_length=60)
+    description = models.TextField(blank=True)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    available_states = models.JSONField(
+        default=list, blank=True,
+        help_text="The units this provisioner can apply — Salt formulas/states "
+                  "(e.g. 'base.locale'), Ansible roles, or cloud-init modules. "
+                  "Each item: {slug, name, description}.",
+    )
+
+    class Meta:
+        ordering = ["-is_default", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class HardwareTarget(TimestampedModel):
     """A specific board, SoC, or PC profile we publish images for.
 
@@ -237,3 +269,18 @@ class UpstreamImage(TimestampedModel):
     def is_syncing(self) -> bool:
         """A mirror job has been kicked off but the blob isn't cached yet."""
         return bool(self.mirror_started_at) and not self.cache_storage_key
+
+    @property
+    def public_url(self) -> str:
+        """Browser-reachable S3 URL for the mirrored blob, if configured.
+
+        Built from AWS_S3_PUBLIC_ENDPOINT + bucket + cache_storage_key so the UI
+        can link straight to the object instead of streaming through the app.
+        Empty when not mirrored or no public endpoint is set.
+        """
+        from django.conf import settings
+        base = getattr(settings, "AWS_S3_PUBLIC_ENDPOINT", "") or ""
+        bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "") or ""
+        if self.cache_storage_key and base and bucket:
+            return f"{base.rstrip('/')}/{bucket}/{self.cache_storage_key}"
+        return ""

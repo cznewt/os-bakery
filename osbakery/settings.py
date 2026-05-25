@@ -146,6 +146,13 @@ ARTIFACT_STORAGE_ROOT = Path(
 ).resolve()
 ARTIFACT_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
+# Browser-reachable base URL for the artifacts bucket (the in-cluster
+# AWS_S3_ENDPOINT_URL is internal, e.g. http://minio:9000). When set, mirrored
+# base images link straight to the S3 object instead of streaming through the
+# app. e.g. http://10.50.20.226:9000
+AWS_S3_PUBLIC_ENDPOINT = env("AWS_S3_PUBLIC_ENDPOINT", default="")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+
 if ARTIFACT_STORAGE_BACKEND == "s3":
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},

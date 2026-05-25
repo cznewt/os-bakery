@@ -13,7 +13,7 @@ from typing import Any
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from catalog.models import HardwareTarget, OperatingSystem, OSRelease
+from catalog.models import HardwareTarget, OperatingSystem, OSRelease, Provisioner
 from recipes.models import Recipe, RecipeOption, RecipeVersion
 
 
@@ -685,6 +685,9 @@ class Command(BaseCommand):
                     slug__in=[r["slug"] for r in RECIPES]
                 ).delete()
 
+            # All shipped recipes provision via Salt today.
+            salt_prov = Provisioner.objects.filter(slug="salt").first()
+
             for spec in RECIPES:
                 os_ = OperatingSystem.objects.get(slug=spec["os_slug"])
                 recipe, created = Recipe.objects.get_or_create(
@@ -697,6 +700,9 @@ class Command(BaseCommand):
                         visibility=Recipe.Visibility.PUBLIC,
                     ),
                 )
+                if salt_prov and recipe.provisioner_id != salt_prov.id:
+                    recipe.provisioner = salt_prov
+                    recipe.save(update_fields=["provisioner"])
                 report["recipes"] += 1
                 report["recipes+"] += int(created)
                 self.stdout.write(

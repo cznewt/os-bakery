@@ -55,6 +55,15 @@ class Recipe(TimestampedModel):
         on_delete=models.PROTECT,
         related_name="recipes",
     )
+    provisioner = models.ForeignKey(
+        "catalog.Provisioner",
+        on_delete=models.SET_NULL,
+        related_name="recipes",
+        null=True,
+        blank=True,
+        help_text="How this recipe customizes the image (Salt by default). "
+                  "Falls back to Salt when unset.",
+    )
     pinned_release = models.ForeignKey(
         OSRelease,
         on_delete=models.SET_NULL,

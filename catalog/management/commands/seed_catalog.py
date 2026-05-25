@@ -22,8 +22,79 @@ from catalog.models import (
     HardwareTarget,
     OperatingSystem,
     OSRelease,
+    Provisioner,
     UpstreamImage,
 )
+
+
+# ---------------------------------------------------------------------------
+# Provisioners — how a recipe customizes the image. Each lists the "states"
+# (units) it can apply: Salt formulas, Ansible roles, or cloud-init modules.
+# ---------------------------------------------------------------------------
+PROVISIONERS: list[dict] = [
+    {
+        "slug": "salt",
+        "name": "Salt",
+        "is_default": True,
+        "description": "Masterless salt-call --local applies the recipe's state "
+                       "formulas inside the (qemu) chroot. The current default.",
+        "available_states": [
+            {"slug": "base.locale", "name": "Locale & timezone"},
+            {"slug": "base.users", "name": "Admin user + SSH keys"},
+            {"slug": "base.hardening", "name": "SSH/sshd hardening + ufw"},
+            {"slug": "base.network", "name": "Wi-Fi / network config"},
+            {"slug": "raspios.base", "name": "Raspberry Pi OS baseline"},
+            {"slug": "raspios.headless", "name": "Headless (no desktop)"},
+            {"slug": "raspios.docker", "name": "Docker on raspios"},
+            {"slug": "raspios.kiosk", "name": "Kiosk mode"},
+            {"slug": "ubuntu.base", "name": "Ubuntu baseline"},
+            {"slug": "ubuntu.server", "name": "Ubuntu server"},
+            {"slug": "ubuntu.k3s", "name": "k3s node"},
+            {"slug": "batocera.base", "name": "Batocera baseline"},
+            {"slug": "batocera.arcade", "name": "Arcade cabinet lockdown"},
+            {"slug": "batocera.minimal", "name": "Minimal Batocera"},
+            {"slug": "batocera.family", "name": "Family-friendly Batocera"},
+            {"slug": "haos.base", "name": "Home Assistant OS baseline"},
+            {"slug": "haos.network", "name": "HAOS network"},
+            {"slug": "haos.ssh", "name": "HAOS SSH access"},
+        ],
+    },
+    {
+        "slug": "ansible",
+        "name": "Ansible",
+        "is_default": False,
+        "description": "Apply Ansible roles against the mounted rootfs "
+                       "(ansible-playbook --connection=chroot). Not yet wired up.",
+        "available_states": [
+            {"slug": "common", "name": "Common baseline"},
+            {"slug": "users", "name": "Users & SSH keys"},
+            {"slug": "hardening", "name": "Security hardening"},
+            {"slug": "network", "name": "Network / Wi-Fi"},
+            {"slug": "docker", "name": "Docker engine"},
+            {"slug": "k3s", "name": "k3s node"},
+            {"slug": "salt_minion", "name": "Salt minion"},
+        ],
+    },
+    {
+        "slug": "cloud-init",
+        "name": "Cloud-Init",
+        "is_default": False,
+        "description": "Inject a cloud-init user-data/config so the image "
+                       "self-configures on first boot. Not yet wired up.",
+        "available_states": [
+            {"slug": "users", "name": "users (accounts + SSH keys)"},
+            {"slug": "ssh", "name": "ssh (host keys, authorized_keys)"},
+            {"slug": "packages", "name": "packages (apt/yum install)"},
+            {"slug": "package_update_upgrade", "name": "package update/upgrade"},
+            {"slug": "write_files", "name": "write_files"},
+            {"slug": "runcmd", "name": "runcmd"},
+            {"slug": "hostname", "name": "set_hostname / fqdn"},
+            {"slug": "timezone", "name": "timezone"},
+            {"slug": "locale", "name": "locale"},
+            {"slug": "network", "name": "network-config (netplan)"},
+        ],
+    },
+]
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +733,19 @@ class Command(BaseCommand):
                   "arch+": 0, "target+": 0, "os+": 0, "release+": 0, "image+": 0}
 
         with transaction.atomic():
+            for pseed in PROVISIONERS:
+                obj, created = Provisioner.objects.update_or_create(
+                    slug=pseed["slug"],
+                    defaults=dict(
+                        name=pseed["name"],
+                        description=pseed["description"],
+                        is_default=pseed["is_default"],
+                        available_states=pseed["available_states"],
+                    ),
+                )
+                if not quiet:
+                    self._echo("Provisioner", obj.slug, created)
+
             arch_by_slug: dict[str, Architecture] = {}
             for seed in ARCHITECTURES:
                 obj, created = Architecture.objects.get_or_create(

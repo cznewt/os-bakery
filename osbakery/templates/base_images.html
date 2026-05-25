@@ -97,6 +97,7 @@
               <tr>
                 <th class="text-left px-6 py-3 font-medium">Release</th>
                 <th class="text-left px-4 py-3 font-medium">Channel</th>
+                <th class="text-left px-4 py-3 font-medium">Released</th>
                 <th class="text-left px-4 py-3 font-medium">Target</th>
                 <th class="text-left px-4 py-3 font-medium">Arch</th>
                 <th class="text-left px-4 py-3 font-medium">Variant</th>
@@ -120,6 +121,7 @@
                   {% endif %}
                 </td>
                 <td class="px-4 py-3 font-mono text-stone-600">{{ img.release.channel }}</td>
+                <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">{{ img.release.released_on|date:"Y-m-d"|default:"—" }}</td>
                 <td class="px-4 py-3 font-mono">{{ img.hardware_target.slug }}</td>
                 <td class="px-4 py-3 font-mono text-stone-500">{{ img.hardware_target.architecture.slug }}</td>
                 <td class="px-4 py-3 font-mono">
@@ -149,8 +151,8 @@
                 </td>
                 <td class="px-4 py-3">
                   <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
-                    {% if img.is_cached %}
-                    <a href="{% url 'download_base_image' img.pk %}"
+    {% if img.is_cached %}
+                    <a href="{% if img.public_url %}{{ img.public_url }}{% else %}{% url 'download_base_image' img.pk %}{% endif %}"
                        title="Download the mirrored image from the S3 artifact store"
                        data-toast="Downloading {{ img.release.operating_system.slug }}/{{ img.hardware_target.slug }} {{ img.variant }}…"
                        data-toast-level="success"

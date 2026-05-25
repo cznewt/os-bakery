@@ -224,18 +224,29 @@ def _mount_and_provision(ctx: BuildContext) -> None:
     """
     from builds.provisioners import local_salt, packer_arm_tools
 
-    if _has_salt_to_apply(ctx):
-        if local_salt.provision(ctx):
-            return
-    else:
-        _emit(
-            ctx.build, "salt",
-            "Recipe defines no Salt states — skipping masterless bake.",
-            level="info",
-        )
+    recipe = ctx.build.recipe_version.recipe
+    prov = recipe.provisioner.slug if recipe.provisioner_id else "salt"
 
-    # Legacy backend (master-connected minion via packer-arm-tools chroot).
-    if packer_arm_tools.provision(ctx):
+    if prov == "salt":
+        if _has_salt_to_apply(ctx):
+            if local_salt.provision(ctx):
+                return
+        else:
+            _emit(
+                ctx.build, "salt",
+                "Recipe defines no Salt states — skipping masterless bake.",
+                level="info",
+            )
+        # Legacy backend (master-connected minion via packer-arm-tools chroot).
+        if packer_arm_tools.provision(ctx):
+            return
+    elif prov in ("ansible", "cloud-init"):
+        _emit(
+            ctx.build, "provision",
+            f"Provisioner '{prov}' is not yet implemented — shipping the base "
+            f"image unmodified.",
+            level="warning", provisioner=prov,
+        )
         return
 
     _emit(

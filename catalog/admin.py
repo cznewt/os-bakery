@@ -5,8 +5,16 @@ from .models import (
     HardwareTarget,
     OperatingSystem,
     OSRelease,
+    Provisioner,
     UpstreamImage,
 )
+
+
+@admin.register(Provisioner)
+class ProvisionerAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "is_default", "is_active")
+    list_filter = ("is_default", "is_active")
+    search_fields = ("slug", "name")
 
 
 @admin.register(Architecture)
