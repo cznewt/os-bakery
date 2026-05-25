@@ -50,21 +50,17 @@
           <span class="text-xs text-stone-400 font-mono">cluster.parameters</span>
         </div>
         {% if params %}
-        <table class="w-full text-sm">
-          <tbody class="divide-y divide-stone-100">
-            {% for key, value in params.items %}
-            <tr class="align-top">
-              <td class="px-5 py-3 font-mono font-medium text-stone-700 whitespace-nowrap w-1/4">{{ key }}</td>
-              <td class="px-5 py-3 font-mono text-stone-600">
-                {% if value|stringformat:'s' == value %}{{ value }}{% else %}<pre class="whitespace-pre-wrap text-xs text-stone-500">{{ value }}</pre>{% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="divide-y divide-stone-100">
+          {% for s in sections %}
+          <div class="px-5 py-3">
+            <div class="font-mono text-xs font-medium text-stone-500 mb-1">{{ s.key }}</div>
+            <pre class="text-xs text-stone-700 overflow-x-auto bg-stone-50 rounded p-3 leading-relaxed">{{ s.yaml }}</pre>
+          </div>
+          {% endfor %}
+        </div>
         <details class="border-t border-stone-200">
-          <summary class="px-5 py-2 text-xs font-mono text-stone-500 cursor-pointer hover:text-stone-900">raw JSON</summary>
-          <pre class="px-5 py-3 text-xs text-stone-600 overflow-x-auto bg-stone-50">{{ params_json }}</pre>
+          <summary class="px-5 py-2 text-xs font-mono text-stone-500 cursor-pointer hover:text-stone-900">full YAML</summary>
+          <pre class="px-5 py-3 text-xs text-stone-600 overflow-x-auto bg-stone-50">{{ full_yaml }}</pre>
         </details>
         {% else %}
         <div class="px-5 py-10 text-center text-stone-500 text-sm">No metadata set on this cluster.</div>

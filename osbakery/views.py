@@ -484,16 +484,32 @@ def cluster_detail(request: HttpRequest, slug: str) -> HttpResponse:
     The ``parameters`` JSON mirrors the salt-reclass deploy metadata (namespaces,
     nodes, per-deploy config); render it as a pretty key-value tree.
     """
-    import json
+    import yaml
 
     cluster = get_object_or_404(Cluster.objects.select_related("tenant"), slug=slug)
     params = cluster.parameters or {}
+    # Render the metadata as YAML (it mirrors salt-reclass deploy data, which is
+    # YAML natively). One block per top-level key so each is readable on its own.
+    sections = []
+    if isinstance(params, dict):
+        for key in params:
+            sections.append({
+                "key": key,
+                "yaml": yaml.safe_dump(
+                    {key: params[key]}, sort_keys=False,
+                    default_flow_style=False, allow_unicode=True,
+                ).rstrip(),
+            })
+    full_yaml = yaml.safe_dump(
+        params, sort_keys=False, default_flow_style=False, allow_unicode=True,
+    ).rstrip() if params else ""
     baked = cluster.build_requests.filter(artifact__isnull=False).count()
     builds = cluster.build_requests.count()
     return render(request, "cluster_detail.html", {
         "cluster": cluster,
         "params": params,
-        "params_json": json.dumps(params, indent=2, sort_keys=True, default=str),
+        "sections": sections,
+        "full_yaml": full_yaml,
         "param_count": len(params) if isinstance(params, dict) else 0,
         "baked": baked,
         "builds": builds,
