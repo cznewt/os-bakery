@@ -12,10 +12,29 @@ Usage:
 
 from __future__ import annotations
 
+import datetime
+import re
 from typing import NamedTuple
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+
+# Known release dates for OSes whose version isn't itself a date. Date-versioned
+# OSes (raspios = YYYY-MM-DD) are derived from the version automatically.
+KNOWN_RELEASE_DATES: dict[tuple[str, str], str] = {
+    ("ubuntu", "24.04"): "2024-04-25",
+    ("ubuntu", "22.04"): "2022-04-21",
+    ("debian", "13"): "2025-08-09",
+    ("debian", "12"): "2023-06-10",
+    ("popos", "22.04"): "2022-04-25",
+}
+
+
+def _release_date(os_slug: str, version: str) -> datetime.date | None:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", version):
+        return datetime.date.fromisoformat(version)
+    known = KNOWN_RELEASE_DATES.get((os_slug, version))
+    return datetime.date.fromisoformat(known) if known else None
 
 from catalog.models import (
     Architecture,
@@ -37,7 +56,7 @@ PROVISIONERS: list[dict] = [
         "name": "Salt",
         "is_default": True,
         "description": "Masterless salt-call --local applies the recipe's state "
-                       "formulas inside the (qemu) chroot. The current default.",
+                       "formulas inside the (qemu) chroot.",
         "available_states": [
             {"slug": "base.locale", "name": "Locale & timezone"},
             {"slug": "base.users", "name": "Admin user + SSH keys"},
@@ -64,7 +83,7 @@ PROVISIONERS: list[dict] = [
         "name": "Ansible",
         "is_default": False,
         "description": "Apply Ansible roles against the mounted rootfs "
-                       "(ansible-playbook --connection=chroot). Not yet wired up.",
+                       "(ansible-playbook --connection=chroot).",
         "available_states": [
             {"slug": "common", "name": "Common baseline"},
             {"slug": "users", "name": "Users & SSH keys"},
@@ -80,7 +99,7 @@ PROVISIONERS: list[dict] = [
         "name": "Cloud-Init",
         "is_default": False,
         "description": "Inject a cloud-init user-data/config so the image "
-                       "self-configures on first boot. Not yet wired up.",
+                       "self-configures on first boot.",
         "available_states": [
             {"slug": "users", "name": "users (accounts + SSH keys)"},
             {"slug": "ssh", "name": "ssh (host keys, authorized_keys)"},
@@ -806,6 +825,12 @@ class Command(BaseCommand):
                     defaults=dict(codename=rseed.codename,
                                   is_default=rseed.is_default),
                 )
+                # Backfill release date: date-versioned OSes (raspios) carry it
+                # in the version; others come from a known-dates map.
+                rel_date = _release_date(rseed.os_slug, rseed.version)
+                if rel_date and obj.released_on != rel_date:
+                    obj.released_on = rel_date
+                    obj.save(update_fields=["released_on"])
                 release_key[(rseed.os_slug, rseed.version, rseed.channel)] = obj
                 report["release"] += 1
                 report["release+"] += int(created)
