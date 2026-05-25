@@ -196,10 +196,21 @@ RECIPES: list[dict[str, Any]] = [
             {"key": "wifi_country", "label": "Wi-Fi country code",
              "kind": "string", "default": "DE", "sort_order": 40},
             {"key": "ssh_authorized_keys",
-             "label": "SSH add-on authorized keys",
-             "help_text": "Pre-seeded into the HA SSH add-on's authorized_keys "
-                          "(install the add-on after first boot).",
+             "label": "SSH authorized keys",
+             "help_text": "Baked onto the boot partition for the HAOS debug SSH "
+                          "(port 22222).",
              "kind": "ssh_key", "sort_order": 50},
+            {"key": "addon_repos",
+             "label": "Add-on repositories",
+             "help_text": "Add-on store repos to pre-seed (one URL per line), "
+                          "e.g. your hassos-addons repo for salt/alloy.",
+             "kind": "text", "sort_order": 60},
+            {"key": "ha_backup_url",
+             "label": "HA backup .tar URL (restore on first boot)",
+             "help_text": "Optional — a HA backup to restore on first boot, "
+                          "baking in preinstalled add-ons (salt, alloy). "
+                          "Provide once you've captured one.",
+             "kind": "string", "sort_order": 70},
         ],
     },
     {

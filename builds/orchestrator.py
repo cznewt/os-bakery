@@ -222,19 +222,26 @@ def _mount_and_provision(ctx: BuildContext) -> None:
     the in-house chroot path isn't available. If neither runs, the image ships
     as the unmodified upstream base.
     """
-    from builds.provisioners import batocera_pkg, local_salt, packer_arm_tools
+    from builds.provisioners import batocera_pkg, haos_pkg, local_salt, packer_arm_tools
 
     recipe = ctx.build.recipe_version.recipe
     prov = recipe.provisioner.slug if recipe.provisioner_id else "salt"
+    os_slug = recipe.operating_system.slug
 
     # Batocera is buildroot — no apt/chroot-exec. Salt (+ alloy) are baked in by
     # overlaying their pacman packages into the userdata partition.
-    if recipe.operating_system.slug == "batocera":
+    if os_slug == "batocera":
         if batocera_pkg.provision(ctx):
             return
         _emit(ctx.build, "provision",
               "Batocera package overlay did not run — shipping the base image.",
               level="warning")
+        return
+
+    # HAOS is a Supervisor appliance — first-boot config is injected onto the
+    # boot partition (network/SSH); add-ons come via a baked backup.
+    if os_slug == "haos":
+        haos_pkg.provision(ctx)
         return
 
     if prov == "salt":
@@ -327,21 +334,26 @@ def bake(build: BuildRequest) -> Artifact:
     """End-to-end driver invoked by the Celery task."""
     _emit(build, "prepare", "Provisioning workspace")
     ctx = _prepare_workspace(build)
+    try:
+        _emit(build, "pillar", "Materialising pillar + top.sls")
+        _write_pillar(ctx)
+        _write_top(ctx)
 
-    _emit(build, "pillar", "Materialising pillar + top.sls")
-    _write_pillar(ctx)
-    _write_top(ctx)
+        build.status = BuildRequest.Status.BUILDING
+        build.save(update_fields=["status"])
+        _emit(build, "mount", "Mounting base image and running salt-call")
+        _mount_and_provision(ctx)
 
-    build.status = BuildRequest.Status.BUILDING
-    build.save(update_fields=["status"])
-    _emit(build, "mount", "Mounting base image and running salt-call")
-    _mount_and_provision(ctx)
+        build.status = BuildRequest.Status.FINALIZING
+        build.save(update_fields=["status"])
+        _emit(build, "pack", "Packing artifact")
+        packed = _pack(ctx)
 
-    build.status = BuildRequest.Status.FINALIZING
-    build.save(update_fields=["status"])
-    _emit(build, "pack", "Packing artifact")
-    packed = _pack(ctx)
-
-    artifact = _publish(ctx, packed)
-    _emit(build, "publish", f"Artifact published: {artifact.filename}")
-    return artifact
+        artifact = _publish(ctx, packed)
+        _emit(build, "publish", f"Artifact published: {artifact.filename}")
+        return artifact
+    finally:
+        # Always reclaim the multi-GB work dir (base/target images, rootfs) —
+        # the artifact is in S3, so the local copy is disposable. Without this
+        # the build-work volume leaks ~image-size per bake and fills the disk.
+        shutil.rmtree(ctx.work_dir, ignore_errors=True)
