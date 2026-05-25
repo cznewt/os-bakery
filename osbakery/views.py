@@ -475,7 +475,12 @@ def clusters(request: HttpRequest) -> HttpResponse:
         )
         .order_by("tenant__name", "name")
     )
-    return render(request, "clusters.html", {"clusters": cluster_qs})
+    from tenants.models import Tenant
+    return render(request, "clusters.html", {
+        "clusters": cluster_qs,
+        "tenants": Tenant.objects.filter(is_active=True).order_by("name"),
+        "kinds": Cluster.Kind.choices,
+    })
 
 
 def provisioners(request: HttpRequest) -> HttpResponse:
@@ -540,6 +545,72 @@ def cluster_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "baked": baked,
         "builds": builds,
     })
+
+
+@require_POST
+def cluster_create(request: HttpRequest) -> HttpResponse:
+    """Create a cluster from the form on /clusters/ (name, tenant, kind, YAML)."""
+    import yaml
+    from django.utils.text import slugify
+    from tenants.models import Tenant
+
+    name = (request.POST.get("name") or "").strip()
+    slug = (request.POST.get("slug") or "").strip() or slugify(name)
+    tenant_id = request.POST.get("tenant")
+    kind = (request.POST.get("kind") or "").strip() or Cluster.Kind.GENERIC
+    raw = request.POST.get("metadata_yaml", "")
+    if not name or not tenant_id:
+        messages.error(request, "Name and tenant are required.")
+        return redirect("clusters")
+    try:
+        parsed = yaml.safe_load(raw) or {}
+        if not isinstance(parsed, dict):
+            raise ValueError("metadata must be a mapping (key: value)")
+    except (yaml.YAMLError, ValueError) as exc:
+        messages.error(request, f"Invalid YAML — not created: {exc}")
+        return redirect("clusters")
+    if Cluster.objects.filter(slug=slug).exists():
+        messages.error(request, f"A cluster with slug '{slug}' already exists.")
+        return redirect("clusters")
+    tenant = get_object_or_404(Tenant, pk=tenant_id)
+    cluster = Cluster.objects.create(
+        tenant=tenant, slug=slug, name=name, kind=kind, parameters=parsed,
+    )
+    messages.success(request, f"Created cluster {cluster.name}.")
+    return redirect("cluster_detail", slug=cluster.slug)
+
+
+@require_POST
+def cluster_edit(request: HttpRequest, slug: str) -> HttpResponse:
+    """Update a cluster: rename + replace its metadata from a YAML textarea."""
+    import yaml
+
+    cluster = get_object_or_404(Cluster, slug=slug)
+    name = (request.POST.get("name") or "").strip()
+    raw = request.POST.get("metadata_yaml", "")
+    try:
+        parsed = yaml.safe_load(raw) or {}
+        if not isinstance(parsed, dict):
+            raise ValueError("top-level metadata must be a mapping (key: value)")
+    except (yaml.YAMLError, ValueError) as exc:
+        messages.error(request, f"Invalid YAML — not saved: {exc}")
+        return redirect("cluster_detail", slug=slug)
+    if name:
+        cluster.name = name
+    cluster.parameters = parsed
+    cluster.save(update_fields=["name", "parameters", "updated_at"])
+    messages.success(request, f"Saved {cluster.name} ({len(parsed)} metadata keys).")
+    return redirect("cluster_detail", slug=slug)
+
+
+@require_POST
+def cluster_delete(request: HttpRequest, slug: str) -> HttpResponse:
+    """Remove a cluster. Its builds keep (FK is SET_NULL) but lose the link."""
+    cluster = get_object_or_404(Cluster, slug=slug)
+    name = cluster.name
+    cluster.delete()
+    messages.success(request, f"Removed cluster {name}.")
+    return redirect("clusters")
 
 
 @require_POST

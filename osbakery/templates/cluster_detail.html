@@ -33,6 +33,14 @@
     </header>
 
     <main class="pb-24 space-y-6">
+      {% if messages %}
+      <div class="space-y-2">
+        {% for m in messages %}
+        <div class="rounded-md border px-3 py-2 text-sm {% if m.tags == 'error' %}border-red-300 bg-red-50 text-red-800{% else %}border-emerald-300 bg-emerald-50 text-emerald-800{% endif %}">{{ m.message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
       <div class="flex flex-wrap gap-3">
         <a href="/baked/?cluster={{ cluster.slug }}"
            class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">
@@ -66,6 +74,35 @@
         <div class="px-5 py-10 text-center text-stone-500 text-sm">No metadata set on this cluster.</div>
         {% endif %}
       </section>
+
+      <details class="bg-white border border-stone-200 rounded-xl shadow-sm">
+        <summary class="px-5 py-3 cursor-pointer font-medium hover:bg-stone-50 rounded-xl">✎ Edit cluster</summary>
+        <form method="post" action="{% url 'cluster_edit' cluster.slug %}" class="px-5 pb-5 pt-2 space-y-3">
+          {% csrf_token %}
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Name</label>
+            <input type="text" name="name" value="{{ cluster.name }}"
+                   class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Metadata (YAML)</label>
+            <textarea name="metadata_yaml" rows="16" spellcheck="false"
+                      class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-xs leading-relaxed">{{ full_yaml }}</textarea>
+          </div>
+          <div class="flex items-center gap-3">
+            <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">Save changes</button>
+            <span class="text-xs text-stone-400">Replaces all metadata with the parsed YAML.</span>
+          </div>
+        </form>
+      </details>
+
+      <form method="post" action="{% url 'cluster_delete' cluster.slug %}"
+            onsubmit="return confirm('Remove cluster {{ cluster.name|escapejs }}? Its builds are kept but unlinked.');">
+        {% csrf_token %}
+        <button type="submit" class="text-sm font-medium text-red-700 border border-red-300 rounded-lg px-4 py-2 hover:bg-red-50">
+          ✕ Remove cluster
+        </button>
+      </form>
     </main>
   </div>
 </body>
