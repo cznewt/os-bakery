@@ -214,6 +214,9 @@ services:
       <<: *django-env
     volumes:
       - build-work:/app/storage/work
+      # Share the host devtmpfs so loopback partition nodes (loop0pN) are
+      # visible for batocera/x86 image bakes (same fix as the ARM worker).
+      - /dev:/dev
     depends_on:
       postgres:
         condition: service_healthy
