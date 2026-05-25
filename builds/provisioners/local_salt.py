@@ -197,15 +197,22 @@ def _stage_salt(ctx: "BuildContext", rootfs: Path) -> None:
             pass
 
 
-# Masterless salt-call: install salt if absent (apt, then the upstream
-# bootstrap as a fallback), then apply the highstate against the local roots.
+# Masterless salt-call. Salt isn't in Debian/raspios default repos, so we add
+# the official SaltProject repository (key + .sources) before installing, then
+# apply the highstate against the baked-in local roots — no master.
 _CHROOT_SALT_SCRIPT = r"""
-set -e
+set -ex
 export DEBIAN_FRONTEND=noninteractive
 if ! command -v salt-call >/dev/null 2>&1; then
-  (apt-get update && apt-get install -y --no-install-recommends salt-minion) \
-    || (curl -fsSL https://bootstrap.saltproject.io -o /tmp/bootstrap-salt.sh \
-        && sh /tmp/bootstrap-salt.sh -X stable)
+  apt-get update
+  apt-get install -y --no-install-recommends curl ca-certificates
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public \
+    -o /etc/apt/keyrings/salt-archive-keyring.pgp
+  curl -fsSL https://github.com/saltstack/salt-install-guide/releases/latest/download/salt.sources \
+    -o /etc/apt/sources.list.d/salt.sources
+  apt-get update
+  apt-get install -y --no-install-recommends salt-minion
 fi
 # Masterless: read states/pillar from the baked-in local roots, no master.
 salt-call --local --retcode-passthrough \
@@ -249,9 +256,20 @@ def provision(ctx: "BuildContext") -> bool:
 
         _stage_salt(ctx, rootfs)
 
-        _emit(build, "salt", "Running salt-call --local state.apply in chroot.")
-        _sh(["chroot", str(rootfs), "/bin/sh", "-ec", _CHROOT_SALT_SCRIPT])
-        _emit(build, "salt", "Masterless salt highstate applied.", backend="local_salt")
+        _emit(build, "salt", "Installing salt + running salt-call --local in chroot.")
+        proc = subprocess.run(
+            ["chroot", str(rootfs), "/bin/sh", "-ec", _CHROOT_SALT_SCRIPT],
+            text=True, capture_output=True,
+        )
+        tail = ((proc.stdout or "") + (proc.stderr or ""))[-4000:]
+        if proc.returncode != 0:
+            _emit(build, "salt", "Masterless salt-call failed in chroot.",
+                  level="error", returncode=proc.returncode, output_tail=tail)
+            raise RuntimeError(
+                f"chroot salt-call failed (rc={proc.returncode}); see event data."
+            )
+        _emit(build, "salt", "Masterless salt highstate applied.",
+              backend="local_salt", output_tail=tail)
         return True
     finally:
         # Always tear down, in reverse order, best-effort.
