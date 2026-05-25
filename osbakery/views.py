@@ -478,6 +478,28 @@ def clusters(request: HttpRequest) -> HttpResponse:
     return render(request, "clusters.html", {"clusters": cluster_qs})
 
 
+def cluster_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    """A single cluster's metadata (key-value parameters) + link to its bakes.
+
+    The ``parameters`` JSON mirrors the salt-reclass deploy metadata (namespaces,
+    nodes, per-deploy config); render it as a pretty key-value tree.
+    """
+    import json
+
+    cluster = get_object_or_404(Cluster.objects.select_related("tenant"), slug=slug)
+    params = cluster.parameters or {}
+    baked = cluster.build_requests.filter(artifact__isnull=False).count()
+    builds = cluster.build_requests.count()
+    return render(request, "cluster_detail.html", {
+        "cluster": cluster,
+        "params": params,
+        "params_json": json.dumps(params, indent=2, sort_keys=True, default=str),
+        "param_count": len(params) if isinstance(params, dict) else 0,
+        "baked": baked,
+        "builds": builds,
+    })
+
+
 @require_POST
 def sync_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     """Queue a background job to mirror an upstream image into the artifact store.
