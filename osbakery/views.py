@@ -403,6 +403,81 @@ def download_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     return response
 
 
+def baked_images(request: HttpRequest) -> HttpResponse:
+    """Actual baked output images (BuildRequests + their artifacts).
+
+    Filterable via ?cluster=<slug>, ?os=<slug>, ?recipe=<slug>, ?status=<s> —
+    the cluster cards on /clusters/ link here with ?cluster=… applied.
+    """
+    builds = (
+        BuildRequest.objects.select_related(
+            "recipe_version__recipe__operating_system",
+            "hardware_target__architecture",
+            "cluster__tenant",
+            "tenant",
+            "artifact",
+        )
+        .prefetch_related("artifact__tokens")
+        .order_by("-queued_at")
+    )
+    f_cluster = request.GET.get("cluster") or ""
+    f_os = request.GET.get("os") or ""
+    f_recipe = request.GET.get("recipe") or ""
+    f_status = request.GET.get("status") or ""
+    if f_cluster:
+        builds = builds.filter(cluster__slug=f_cluster)
+    if f_os:
+        builds = builds.filter(recipe_version__recipe__operating_system__slug=f_os)
+    if f_recipe:
+        builds = builds.filter(recipe_version__recipe__slug=f_recipe)
+    if f_status:
+        builds = builds.filter(status=f_status)
+
+    rows = []
+    for b in builds:
+        art = getattr(b, "artifact", None)
+        tok = art.tokens.first() if art else None
+        rows.append({
+            "id": b.id,
+            "recipe": b.recipe_version.recipe.slug,
+            "os": b.recipe_version.recipe.operating_system.slug,
+            "target": b.hardware_target.slug,
+            "label": b.label,
+            "cluster": (f"{b.cluster.tenant.slug}/{b.cluster.slug}" if b.cluster_id else None),
+            "cluster_slug": b.cluster.slug if b.cluster_id else None,
+            "status": b.status,
+            "size_bytes": art.size_bytes if art else 0,
+            "filename": art.filename if art else None,
+            "token": tok.token if tok else None,
+            "queued_at": b.queued_at,
+        })
+    context = {
+        "rows": rows,
+        "total": len(rows),
+        "f_cluster": f_cluster,
+        "f_os": f_os,
+        "f_recipe": f_recipe,
+        "f_status": f_status,
+    }
+    return render(request, "baked_images.html", context)
+
+
+def clusters(request: HttpRequest) -> HttpResponse:
+    """Clusters as cards; each links to baked images filtered to that cluster."""
+    from django.db.models import Count, Q
+
+    cluster_qs = (
+        Cluster.objects.filter(is_active=True)
+        .select_related("tenant")
+        .annotate(
+            baked=Count("build_requests", filter=Q(build_requests__artifact__isnull=False), distinct=True),
+            builds=Count("build_requests", distinct=True),
+        )
+        .order_by("tenant__name", "name")
+    )
+    return render(request, "clusters.html", {"clusters": cluster_qs})
+
+
 @require_POST
 def sync_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     """Queue a background job to mirror an upstream image into the artifact store.
