@@ -10,8 +10,9 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.files.storage import storages
 from django.db.models import Count, Prefetch
-from django.http import Http404, HttpRequest, HttpResponse
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from builds.models import BuildRequest
@@ -369,6 +370,36 @@ def base_images(request: HttpRequest) -> HttpResponse:
         "total_rows": sum(len(g["rows"]) for g in groups.values()),
     }
     return render(request, "base_images.html", context)
+
+
+def download_base_image(request: HttpRequest, pk: int) -> HttpResponse:
+    """Stream a mirrored upstream base image from the artifacts store.
+
+    Only serves images that have been cached by `manage.py refresh_upstream`
+    (``cache_storage_key`` set); upstream-only rows 404 — use their Source link.
+    """
+    img = get_object_or_404(
+        UpstreamImage.objects.select_related("release__operating_system", "hardware_target"),
+        pk=pk,
+    )
+    if not img.cache_storage_key:
+        raise Http404("Image not mirrored yet — download it from its source URL.")
+    storage = storages["artifacts"]
+    if not storage.exists(img.cache_storage_key):
+        raise Http404("Mirrored blob missing from the artifact store.")
+
+    filename = img.cache_storage_key.rsplit("/", 1)[-1]
+    response = FileResponse(
+        storage.open(img.cache_storage_key, "rb"),
+        as_attachment=True,
+        filename=filename,
+    )
+    response["Content-Type"] = "application/octet-stream"
+    if img.size_bytes:
+        response["Content-Length"] = str(img.size_bytes)
+    if img.checksum_sha256:
+        response["X-Checksum-SHA256"] = img.checksum_sha256
+    return response
 
 
 # ---------------------------------------------------------------------------

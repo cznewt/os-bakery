@@ -219,4 +219,11 @@ class UpstreamImage(TimestampedModel):
 
     @property
     def is_synced(self) -> bool:
-        return bool(self.local_path and self.checksum_sha256)
+        """Mirrored and ready to bake from — via the MinIO/S3 cache (preferred)
+        or the legacy Packer local_path mirror."""
+        return bool(self.cache_storage_key or (self.local_path and self.checksum_sha256))
+
+    @property
+    def is_cached(self) -> bool:
+        """True when the decompressed image is mirrored in the artifacts store."""
+        return bool(self.cache_storage_key)

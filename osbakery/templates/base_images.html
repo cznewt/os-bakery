@@ -92,6 +92,7 @@
                 <th class="text-left px-4 py-3 font-medium">Format</th>
                 <th class="text-left px-4 py-3 font-medium">Source</th>
                 <th class="text-left px-4 py-3 font-medium">Status</th>
+                <th class="text-left px-4 py-3 font-medium">Download</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-stone-100">
@@ -121,7 +122,12 @@
                   </a>
                 </td>
                 <td class="px-4 py-3">
-                  {% if img.is_synced %}
+                  {% if img.is_cached %}
+                    <span class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      mirrored
+                    </span>
+                  {% elif img.is_synced %}
                     <span class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       synced
@@ -131,6 +137,16 @@
                       <span class="w-1.5 h-1.5 rounded-full bg-stone-300"></span>
                       pending
                     </span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                  {% if img.is_cached %}
+                    <a href="{% url 'download_base_image' img.pk %}"
+                       class="inline-flex items-center gap-1 text-xs font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 hover:text-stone-900">
+                      ↓ download
+                    </a>
+                  {% else %}
+                    <span class="text-xs text-stone-400">—</span>
                   {% endif %}
                 </td>
               </tr>
