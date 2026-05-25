@@ -13,6 +13,7 @@ from .views import (
     docs_index,
     download_base_image,
     home,
+    provisioners,
     sync_base_image,
 )
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path("baked/", baked_images, name="baked_images"),
     path("clusters/", clusters, name="clusters"),
     path("clusters/<slug:slug>/", cluster_detail, name="cluster_detail"),
+    path("provisioners/", provisioners, name="provisioners"),
     path("images/<int:pk>/download/", download_base_image, name="download_base_image"),
     path("images/<int:pk>/sync/", sync_base_image, name="sync_base_image"),
     path("bake/", bake_index, name="bake_index"),

@@ -478,6 +478,32 @@ def clusters(request: HttpRequest) -> HttpResponse:
     return render(request, "clusters.html", {"clusters": cluster_qs})
 
 
+def provisioners(request: HttpRequest) -> HttpResponse:
+    """List provisioners (Salt/Ansible/Cloud-Init), the states each can apply,
+    and which recipes (presets) use them."""
+    from catalog.models import Provisioner
+
+    rows = []
+    for p in (Provisioner.objects
+              .prefetch_related("recipes__operating_system")
+              .order_by("-is_default", "name")):
+        states = p.available_states or []
+        rows.append({
+            "slug": p.slug,
+            "name": p.name,
+            "description": p.description,
+            "is_default": p.is_default,
+            "is_active": p.is_active,
+            "states": states,
+            "state_count": len(states),
+            "recipes": [
+                {"slug": r.slug, "name": r.name, "os": r.operating_system.slug}
+                for r in p.recipes.all().order_by("name")
+            ],
+        })
+    return render(request, "provisioners.html", {"provisioners": rows})
+
+
 def cluster_detail(request: HttpRequest, slug: str) -> HttpResponse:
     """A single cluster's metadata (key-value parameters) + link to its bakes.
 
