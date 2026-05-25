@@ -49,3 +49,6 @@ salt/.pki/
 .coverage
 htmlcov/
 coverage.xml
+
+# Vendored batocera pacman packages (large prebuilt binaries) — synced from ~/work/batocera, bundled into the worker image
+packages/batocera/

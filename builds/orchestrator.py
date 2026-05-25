@@ -222,10 +222,20 @@ def _mount_and_provision(ctx: BuildContext) -> None:
     the in-house chroot path isn't available. If neither runs, the image ships
     as the unmodified upstream base.
     """
-    from builds.provisioners import local_salt, packer_arm_tools
+    from builds.provisioners import batocera_pkg, local_salt, packer_arm_tools
 
     recipe = ctx.build.recipe_version.recipe
     prov = recipe.provisioner.slug if recipe.provisioner_id else "salt"
+
+    # Batocera is buildroot — no apt/chroot-exec. Salt (+ alloy) are baked in by
+    # overlaying their pacman packages into the userdata partition.
+    if recipe.operating_system.slug == "batocera":
+        if batocera_pkg.provision(ctx):
+            return
+        _emit(ctx.build, "provision",
+              "Batocera package overlay did not run — shipping the base image.",
+              level="warning")
+        return
 
     if prov == "salt":
         if _has_salt_to_apply(ctx):

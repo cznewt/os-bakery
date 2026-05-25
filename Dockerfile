@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7-labs
 # Multi-stage Dockerfile for os-bakery.
 #
 # Targets:
@@ -45,7 +46,9 @@ WORKDIR /app
 # Copy the whole source tree before `pip install .` — hatchling's
 # packages = [osbakery, catalog, recipes, builds, infra, tenants] need all
 # top-level dirs present at build time.
-COPY . /app
+# Exclude the large vendored batocera packages from the shared base — only the
+# worker targets COPY their per-arch slice (see below), so web stays lean.
+COPY --exclude=packages . /app
 
 RUN pip install --upgrade pip \
     && pip install gunicorn \
@@ -91,6 +94,7 @@ RUN apt-get update \
         kpartx \
         dosfstools \
         e2fsprogs \
+        exfatprogs \
         parted \
         sudo \
     && rm -rf /var/lib/apt/lists/*
@@ -105,7 +109,12 @@ RUN curl -fsSL "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_$
     && packer version
 
 ENV CELERY_CONCURRENCY=2 \
-    CELERY_QUEUES=builds-packer,default
+    CELERY_QUEUES=builds-packer,default \
+    BATOCERA_PACKAGES_DIR=/opt/batocera-packages
+
+# x86_64 batocera packages (salt, alloy) — overlaid into the userdata partition
+# when baking pc-amd64 batocera images.
+COPY packages/batocera/x86_64 /opt/batocera-packages
 
 CMD ["sh", "-c", "celery -A osbakery worker \
         -n worker-packer@%h -l info \
@@ -127,7 +136,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         xz-utils gzip unzip zip \
         qemu-utils qemu-user-static binfmt-support \
-        kpartx parted dosfstools e2fsprogs libarchive-tools \
+        kpartx parted dosfstools e2fsprogs exfatprogs libarchive-tools \
         sudo rsync zerofree libcap2-bin udev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -143,7 +152,12 @@ ENV PACKER_LOG=0 \
     PACKER_PLUGIN_PATH=/usr/bin \
     PACKER_ARM_TOOLS_PRESETS=/opt/packer-arm-tools/configs \
     CELERY_CONCURRENCY=1 \
-    CELERY_QUEUES=builds-packer-arm
+    CELERY_QUEUES=builds-packer-arm \
+    BATOCERA_PACKAGES_DIR=/opt/batocera-packages
+
+# aarch64 batocera packages (salt, alloy) — overlaid into the userdata partition
+# when baking ARM batocera images (rpi*, handhelds).
+COPY packages/batocera/aarch64 /opt/batocera-packages
 
 CMD ["sh", "-c", "celery -A osbakery worker \
         -n worker-packer-arm@%h -l info \
