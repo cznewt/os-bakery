@@ -22,6 +22,7 @@ from django.db import transaction
 # Known release dates for OSes whose version isn't itself a date. Date-versioned
 # OSes (raspios = YYYY-MM-DD) are derived from the version automatically.
 KNOWN_RELEASE_DATES: dict[tuple[str, str], str] = {
+    ("ubuntu", "26.04"): "2026-04-23",
     ("ubuntu", "24.04"): "2024-04-25",
     ("ubuntu", "22.04"): "2022-04-21",
     ("debian", "13"): "2025-08-09",
@@ -384,7 +385,8 @@ RELEASES: list[ReleaseSeed] = [
     # (24.04) is the headline LTS for new builds. 16.04 Xenial dropped (ESM
     # only, end-of-mainstream-support).
     ReleaseSeed("ubuntu", "22.04", "lts", codename="Jammy"),
-    ReleaseSeed("ubuntu", "24.04", "lts", codename="Noble", is_default=True),
+    ReleaseSeed("ubuntu", "24.04", "lts", codename="Noble"),
+    ReleaseSeed("ubuntu", "26.04", "lts", codename="Resolute", is_default=True),
     # Debian — Trixie (13) is current stable; Bookworm (12) kept for the
     # BeagleBone armhf builds (rcn-ee.com still ships Bookworm-based images).
     ReleaseSeed("debian", "12", "stable", codename="Bookworm"),
@@ -471,6 +473,7 @@ _UBUNTU_CLOUD_AMD = "https://cloud-images.ubuntu.com/releases/{release}/release/
 _UBUNTU_DESKTOP_AMD = {
     "22.04": "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso",
     "24.04": "https://releases.ubuntu.com/24.04/ubuntu-24.04.1-desktop-amd64.iso",
+    "26.04": "https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso",
 }
 
 # Debian — `/latest/` always resolves to the current point release.
@@ -558,7 +561,7 @@ def _images() -> list[ImageSeed]:
     # Ubuntu 22.04 (Jammy) + 24.04 (Noble) — same shape: raspi-preinstalled
     # for rpi4/5 × server/desktop, cloud for generic-arm64 + pc-amd64 server,
     # ISO for pc-amd64 desktop, cloud-image for VM targets.
-    for release in ("22.04", "24.04"):
+    for release in ("22.04", "24.04", "26.04"):
         rows.append(ImageSeed("ubuntu", release, "lts", "generic-arm64",
                               "server",
                               _UBUNTU_CLOUD_ARM.format(release=release),
