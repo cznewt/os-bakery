@@ -529,11 +529,12 @@ _DEBIAN_CLOUD_AMD = "https://cloud.debian.org/images/cloud/{codename}/latest/deb
 _DEBIAN_CLOUD_ARM = "https://cloud.debian.org/images/cloud/{codename}/latest/debian-{major}-genericcloud-arm64.qcow2"
 # raspi.debian.net publishes per-Pi tested images.
 _DEBIAN_RPI = "https://raspi.debian.net/tested-images/{codename}/raspi_{pi}_{codename}.img.xz"
-# rcn-ee.com publishes BeagleBone Debian armhf images. URL has a moving
-# date stamp; this is the current pattern as of mid-2025.
+# BeagleBoard.org publishes BeagleBone (am335x) Debian armhf images at
+# files.beagle.cc (linked from beagleboard.org/distros). The filename carries
+# a moving date stamp — this is the current latest as of 2026-05-19.
 _DEBIAN_BBONE = (
-    "https://rcn-ee.com/rootfs/bb.org/release/2025-04-06/bookworm-iot-armhf/"
-    "bone-debian-12.10-iot-armhf-2025-04-06-4gb.img.xz"
+    "https://files.beagle.cc/file/beagleboard-public-2021/images/"
+    "am335x-debian-12.14-base-v6.12-armhf-2026-05-19-4gb.img.xz"
 )
 
 # Omarchy — release ISO on GitHub Releases. Pin the latest tag.
