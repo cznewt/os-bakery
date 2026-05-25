@@ -28,6 +28,27 @@ KNOWN_RELEASE_DATES: dict[tuple[str, str], str] = {
     ("debian", "13"): "2025-08-09",
     ("debian", "12"): "2023-06-10",
     ("popos", "22.04"): "2022-04-25",
+    # Batocera — from https://batocera.org/changelog (version - date - codename).
+    ("batocera", "43"): "2026-05-08",
+    ("batocera", "42"): "2025-10-12",
+    ("batocera", "39"): "2024-03-04",
+}
+
+
+# Upstream changelog / release-notes page per OS — linked from each image.
+CHANGELOG_URLS: dict[str, str] = {
+    "batocera": "https://batocera.org/changelog",
+    "raspios": "https://www.raspberrypi.com/software/operating-systems/",
+    "ubuntu": "https://wiki.ubuntu.com/Releases",
+    "debian": "https://www.debian.org/releases/",
+    "haos": "https://github.com/home-assistant/operating-system/releases",
+    "kali": "https://www.kali.org/releases/",
+    "popos": "https://github.com/pop-os/iso/releases",
+    "omarchy": "https://omarchy.org/",
+    "l4t": "https://developer.nvidia.com/embedded/jetson-linux",
+    "proxmox-ve": "https://pve.proxmox.com/wiki/Roadmap",
+    "esphome": "https://esphome.io/changelog/",
+    "windows": "https://learn.microsoft.com/windows/release-health/",
 }
 
 
@@ -378,9 +399,9 @@ OPERATING_SYSTEMS: list[OSSeed] = [
 RELEASES: list[ReleaseSeed] = [
     # Batocera — current 43 default + 42 + a v39 row for hardware stuck on
     # the legacy build (RG552 stopped at 39).
-    ReleaseSeed("batocera", "39", "stable", codename="legacy"),
-    ReleaseSeed("batocera", "42", "stable"),
-    ReleaseSeed("batocera", "43", "stable", is_default=True),
+    ReleaseSeed("batocera", "39", "stable", codename="Painted Lady"),
+    ReleaseSeed("batocera", "42", "stable", codename="Papilio Ulysses"),
+    ReleaseSeed("batocera", "43", "stable", codename="Glasswing", is_default=True),
     # Ubuntu — Jammy (22.04) is still in standard support until 2027; Noble
     # (24.04) is the headline LTS for new builds. 16.04 Xenial dropped (ESM
     # only, end-of-mainstream-support).
@@ -813,6 +834,10 @@ class Command(BaseCommand):
                                   kind=oseed.kind, homepage=oseed.homepage,
                                   license=oseed.license, summary=oseed.summary),
                 )
+                changelog = CHANGELOG_URLS.get(oseed.slug, "")
+                if changelog and obj.changelog_url != changelog:
+                    obj.changelog_url = changelog
+                    obj.save(update_fields=["changelog_url"])
                 os_by_slug[oseed.slug] = obj
                 report["os"] += 1
                 report["os+"] += int(created)

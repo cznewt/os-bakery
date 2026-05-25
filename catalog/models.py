@@ -130,6 +130,10 @@ class OperatingSystem(TimestampedModel):
     vendor = models.CharField(max_length=120, blank=True)
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.SERVER)
     homepage = models.URLField(blank=True)
+    changelog_url = models.URLField(
+        blank=True,
+        help_text="Upstream changelog / release-notes page, linked from images.",
+    )
     license = models.CharField(max_length=80, blank=True)
     summary = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)

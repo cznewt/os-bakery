@@ -1,27 +1,33 @@
 """Ubuntu upstream watcher.
 
-Canonical cuts predictable releases:
-- LTS even years: 24.04, 26.04, ...
-- Interim releases: 24.10, 25.04, 25.10, ...
-- Point releases on LTS: 24.04.1, 24.04.2, ...
-
-Index URLs of interest:
-- https://cdimage.ubuntu.com/releases/ — official ISOs / preinstalled
-- https://cloud-images.ubuntu.com/releases/ — cloud-image .img / .qcow2
-
-Both list version-numbered subdirectories. Parsing one is enough since the
-release numbers align.
+https://cloud-images.ubuntu.com/releases/ lists version-numbered subdirs
+(22.04, 24.04, 24.10, 25.04, 26.04, …). LTS = an X.04 release where X is even.
 """
 
 from __future__ import annotations
 
-from .base import BaseWatcher
+import re
+
+from .base import BaseWatcher, CandidateRelease, http_get
+
+_VER = re.compile(r"\b(\d{2})\.(\d{2})/")
 
 
 class UbuntuWatcher(BaseWatcher):
     os_slug = "ubuntu"
-    upstream_index_url = "https://cdimage.ubuntu.com/releases/"
+    upstream_index_url = "https://cloud-images.ubuntu.com/releases/"
 
-    # TODO: fetch the index, list NN.NN[/.NN]/ subdirs, compare to existing
-    # OSRelease rows, emit CandidateReleases for anything new. Channel is
-    # `lts` for X.04 versions where X is even, `stable` otherwise.
+    def latest_releases(self) -> list[CandidateRelease]:
+        html = http_get(self.upstream_index_url)
+        versions = sorted({f"{m.group(1)}.{m.group(2)}" for m in _VER.finditer(html)})
+        out: list[CandidateRelease] = []
+        for v in versions:
+            year, month = v.split(".")
+            is_lts = month == "04" and int(year) % 2 == 0
+            out.append(CandidateRelease(
+                os_slug=self.os_slug,
+                version=v,
+                channel="lts" if is_lts else "stable",
+                release_notes_url=f"https://wiki.ubuntu.com/Releases",
+            ))
+        return out

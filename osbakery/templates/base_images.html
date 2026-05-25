@@ -111,7 +111,10 @@
               {% for img in group.rows %}
               <tr class="row">
                 <td class="px-6 py-3 font-mono whitespace-nowrap">
-                  {{ img.release.version }}
+                  {% if img.release.operating_system.changelog_url %}
+                    <a href="{{ img.release.operating_system.changelog_url }}" target="_blank" rel="noopener"
+                       title="Changelog / release notes" class="hover:underline">{{ img.release.version }} ↗</a>
+                  {% else %}{{ img.release.version }}{% endif %}
                   {% if img.release.is_default %}
                     <span class="ml-1 text-[10px] uppercase font-medium px-1.5 py-0.5 rounded"
                           style="background: {{ group.accent }}18; color: {{ group.accent }}">default</span>

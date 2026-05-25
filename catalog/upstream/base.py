@@ -2,8 +2,25 @@
 
 from __future__ import annotations
 
+import logging
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import date
+
+log = logging.getLogger(__name__)
+
+
+def http_get(url: str, timeout: int = 30) -> str:
+    """Fetch a URL as text, or '' on any error (watchers are best-effort)."""
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "osbakery/1.0 (+os-bakery upstream watcher)"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", "replace")
+    except Exception as exc:  # noqa: BLE001 - best-effort fetch
+        log.warning("watcher fetch failed for %s: %s", url, exc)
+        return ""
 
 
 @dataclass
