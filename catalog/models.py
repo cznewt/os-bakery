@@ -200,6 +200,11 @@ class UpstreamImage(TimestampedModel):
         ),
     )
     last_synced_at = models.DateTimeField(null=True, blank=True)
+    mirror_started_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Set when a mirror (sync) job is queued/running; cleared on "
+                  "failure. While set and not yet cached, the UI shows 'syncing'.",
+    )
 
     class Meta:
         ordering = ["release", "hardware_target__slug", "variant"]
@@ -227,3 +232,8 @@ class UpstreamImage(TimestampedModel):
     def is_cached(self) -> bool:
         """True when the decompressed image is mirrored in the artifacts store."""
         return bool(self.cache_storage_key)
+
+    @property
+    def is_syncing(self) -> bool:
+        """A mirror job has been kicked off but the blob isn't cached yet."""
+        return bool(self.mirror_started_at) and not self.cache_storage_key

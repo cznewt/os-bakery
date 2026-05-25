@@ -492,6 +492,11 @@ def sync_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     )
     from catalog.tasks import mirror_upstream_image
 
+    # Mark as syncing so the row flips from "remote" to "syncing" immediately
+    # (persists across refresh until the job caches the blob or clears it).
+    from django.utils import timezone
+    UpstreamImage.objects.filter(pk=img.pk).update(mirror_started_at=timezone.now())
+
     mirror_upstream_image.delay(img.pk)
     messages.success(
         request,

@@ -135,6 +135,11 @@
                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       mirrored
                     </span>
+                  {% elif img.is_syncing %}
+                    <span class="inline-flex items-center gap-1 text-xs text-sky-700 font-medium">
+                      <span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                      syncing
+                    </span>
                   {% else %}
                     <span class="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
                       <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
@@ -166,7 +171,11 @@
                        class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100 hover:text-stone-900">
                       + Bake
                     </a>
-                    {% if not img.is_cached %}
+                    {% if img.is_syncing %}
+                    <span class="px-2 py-1 text-sky-600 border-l border-stone-300 inline-flex items-center gap-1">
+                      <span class="animate-pulse">⟳ Syncing…</span>
+                    </span>
+                    {% elif not img.is_cached %}
                     <form method="post" action="{% url 'sync_base_image' img.pk %}" class="contents">
                       {% csrf_token %}
                       <button type="submit"

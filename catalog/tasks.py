@@ -25,13 +25,21 @@ def mirror_upstream_image(image_id: int, force: bool = False) -> str:
         "release__operating_system", "hardware_target",
     ).get(pk=image_id)
     log.info("Mirroring upstream image %s (force=%s)", img, force)
-    call_command(
-        "refresh_upstream",
-        os=img.release.operating_system.slug,
-        target=img.hardware_target.slug,
-        release=img.release.version,
-        variant=img.variant or "",
-        force=force,
-    )
-    img.refresh_from_db()
+    try:
+        call_command(
+            "refresh_upstream",
+            os=img.release.operating_system.slug,
+            target=img.hardware_target.slug,
+            release=img.release.version,
+            variant=img.variant or "",
+            force=force,
+        )
+    finally:
+        # If the pull didn't produce a cached blob (error/no match), clear the
+        # syncing marker so the row reverts to "remote" instead of being stuck
+        # on "syncing". On success refresh_upstream has set cache_storage_key,
+        # so is_cached wins and we leave the marker (harmless).
+        img.refresh_from_db()
+        if not img.cache_storage_key:
+            UpstreamImage.objects.filter(pk=img.pk).update(mirror_started_at=None)
     return img.cache_storage_key or "skipped"
