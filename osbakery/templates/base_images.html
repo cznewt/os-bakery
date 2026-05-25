@@ -90,7 +90,6 @@
                 <th class="text-left px-4 py-3 font-medium">Arch</th>
                 <th class="text-left px-4 py-3 font-medium">Variant</th>
                 <th class="text-left px-4 py-3 font-medium">Format</th>
-                <th class="text-left px-4 py-3 font-medium">Source</th>
                 <th class="text-left px-4 py-3 font-medium">Status</th>
                 <th class="text-left px-4 py-3 font-medium">Download</th>
               </tr>
@@ -115,38 +114,32 @@
                   {% if img.variant %}{{ img.variant }}{% else %}<span class="text-stone-400">—</span>{% endif %}
                 </td>
                 <td class="px-4 py-3 font-mono text-stone-600">{{ img.format }}</td>
-                <td class="px-4 py-3 url-cell font-mono text-xs text-stone-500" title="{{ img.source_url }}">
-                  <a href="{{ img.source_url }}" target="_blank" rel="noopener"
-                     class="hover:text-stone-900 hover:underline">
-                    {{ img.source_url }}
-                  </a>
-                </td>
                 <td class="px-4 py-3">
                   {% if img.is_cached %}
                     <span class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       mirrored
                     </span>
-                  {% elif img.is_synced %}
-                    <span class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
-                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                      synced
-                    </span>
                   {% else %}
-                    <span class="inline-flex items-center gap-1 text-xs text-stone-500">
-                      <span class="w-1.5 h-1.5 rounded-full bg-stone-300"></span>
-                      pending
+                    <span class="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+                      <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                      remote
                     </span>
                   {% endif %}
                 </td>
                 <td class="px-4 py-3">
                   {% if img.is_cached %}
                     <a href="{% url 'download_base_image' img.pk %}"
+                       title="Download the mirrored image from the S3 artifact store"
                        class="inline-flex items-center gap-1 text-xs font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 hover:text-stone-900">
-                      ↓ download
+                      ↓ S3
                     </a>
                   {% else %}
-                    <span class="text-xs text-stone-400">—</span>
+                    <a href="{{ img.source_url }}" target="_blank" rel="noopener"
+                       title="Not mirrored — download from the upstream source: {{ img.source_url }}"
+                       class="inline-flex items-center gap-1 text-xs font-medium text-amber-700 border border-amber-300 rounded px-2 py-1 hover:bg-amber-50">
+                      ↓ source
+                    </a>
                   {% endif %}
                 </td>
               </tr>
