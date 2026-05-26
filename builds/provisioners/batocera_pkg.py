@@ -82,6 +82,20 @@ def _append_custom_sh(system: Path, services: list[str]) -> None:
     custom.chmod(0o755)
 
 
+def _dir_size(*roots: Path) -> int:
+    total = 0
+    for r in roots:
+        if not r.is_dir():
+            continue
+        for d, _sub, files in os.walk(r):
+            for f in files:
+                try:
+                    total += (Path(d) / f).stat().st_size
+                except OSError:
+                    pass
+    return total
+
+
 def provision(ctx: "BuildContext") -> bool:
     build = ctx.build
     pkg_dir = Path(os.environ.get("BATOCERA_PACKAGES_DIR", "/opt/batocera-packages"))
@@ -96,12 +110,42 @@ def provision(ctx: "BuildContext") -> bool:
     _emit(build, "provision", "Batocera: overlaying packages into the userdata partition.",
           backend="batocera_pkg")
 
+    # The fresh batocera image ships a tiny SHARE partition (it self-grows on
+    # first boot); the salt+alloy binaries don't fit. So grow the image file
+    # and the SHARE partition here, before mounting, then resize its fs.
+    pkg_roots = [pkg_dir / pkg / "userdata" / "system" for pkg in _PACKAGES]
+    grow_by = _dir_size(*pkg_roots) + 256 * 1024 * 1024  # payload + headroom
+    ls._sh(["truncate", "-s", f"+{grow_by}", str(ctx.target_image)])
+
     lo: str | None = None
     mounted: list[Path] = []
     try:
         lo, parts = ls._attach_loop(ctx.target_image)
         # Batocera: the SHARE/userdata partition is the largest non-vfat one.
         share_part, _boot = ls._classify_partitions(parts)
+        partnum = share_part.name.rsplit("p", 1)[-1]
+        # The image was grown by `truncate`, but the GPT's backup header still
+        # marks the old disk end — so `resizepart 100%` would claim nothing.
+        # `sgdisk -e` relocates the backup header to the real end first.
+        ls._sh(["sgdisk", "-e", lo], check=False)
+        ls._sh_optional(["partprobe", lo])
+        ls._sh_optional(["udevadm", "settle", "--timeout=5"])
+        # Now extend the partition to fill the grown disk, then resize its fs.
+        ls._sh(["parted", "-s", lo, "resizepart", partnum, "100%"], check=False)
+        ls._sh_optional(["partprobe", lo])
+        ls._sh_optional(["udevadm", "settle", "--timeout=5"])
+        fstype = ls._sh(["blkid", "-o", "value", "-s", "TYPE", str(share_part)],
+                        check=False, capture=True).stdout.strip()
+        _emit(build, "provision",
+              f"Batocera SHARE: fstype={fstype or '?'}, grew image +{grow_by // (1024 * 1024)}MiB.",
+              fstype=fstype, grow_mib=grow_by // (1024 * 1024))
+        if fstype == "ext4":
+            ls._sh(["e2fsck", "-fy", str(share_part)], check=False)
+            ls._sh(["resize2fs", str(share_part)], check=False)
+        elif fstype in {"exfat", "vfat", "fat", "msdos"}:
+            _emit(build, "provision",
+                  f"SHARE is {fstype} (no online grow) — overlay may still ENOSPC.",
+                  level="warning")
         ls._mount(str(share_part), userdata)
         mounted.append(userdata)
 

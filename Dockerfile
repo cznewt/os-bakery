@@ -96,6 +96,7 @@ RUN apt-get update \
         e2fsprogs \
         exfatprogs \
         parted \
+        gdisk \
         sudo \
     && rm -rf /var/lib/apt/lists/*
 
@@ -136,7 +137,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         xz-utils gzip unzip zip \
         qemu-utils qemu-user-static binfmt-support \
-        kpartx parted dosfstools e2fsprogs exfatprogs libarchive-tools \
+        kpartx parted gdisk dosfstools e2fsprogs exfatprogs libarchive-tools \
         sudo rsync zerofree libcap2-bin udev \
     && rm -rf /var/lib/apt/lists/*
 
