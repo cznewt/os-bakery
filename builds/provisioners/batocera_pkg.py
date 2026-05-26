@@ -200,6 +200,104 @@ def _append_custom_sh(system: Path, services: list[str], apply: list[str]) -> No
     custom.chmod(0o755)
 
 
+_SARCH = {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64", "aarch64": "aarch64"}
+
+
+def _find_squashfs(boot_mnt: Path) -> Path | None:
+    """Locate the batocera root squashfs on the (FAT) boot partition."""
+    cands = [boot_mnt / "boot" / "batocera", boot_mnt / "batocera"]
+    cands += [p for p in boot_mnt.rglob("batocera*") if p.is_file()]
+    for c in cands:
+        try:
+            with c.open("rb") as fh:
+                if fh.read(4) in (b"hsqs", b"sqsh"):
+                    return c
+        except OSError:
+            pass
+    return None
+
+
+def _apply_salt_local(ctx, build, boot_part, userdata: Path, apply: list[str]) -> None:
+    """Run `salt-call --local state.apply <key>` at bake time, capturing output.
+
+    Chroots into the batocera squashfs root (overlay; only /userdata persists,
+    bound to the SHARE) and runs the bundled onedir salt-call per pillar-key
+    state, emitting each step's output into the build log.
+    """
+    if not apply or boot_part is None:
+        return
+    guest = (getattr(getattr(ctx.build.hardware_target, "architecture", None), "slug", "") or "").lower()
+    sarch = _SARCH.get(guest)
+    if not sarch:
+        _emit(build, "salt-apply", f"Unknown arch '{guest}' — skipping bake-time apply.",
+              level="warning")
+        return
+
+    work = ctx.work_dir
+    bootmnt, sqroot, root = work / "bootp", work / "sqroot", work / "chroot"
+    up, wk = work / "ov/up", work / "ov/wk"
+    mounts: list[Path] = []
+    try:
+        for d in (bootmnt, sqroot, root, up, wk):
+            d.mkdir(parents=True, exist_ok=True)
+        ls._mount(str(boot_part), bootmnt, opts=["-o", "ro"])
+        mounts.append(bootmnt)
+        sqfs = _find_squashfs(bootmnt)
+        if not sqfs:
+            _emit(build, "salt-apply",
+                  "Batocera squashfs root not found on boot partition — "
+                  "skipping bake-time apply (states will run on first boot).",
+                  level="warning")
+            return
+        ls._sh(["mount", "-t", "squashfs", "-o", "loop,ro", str(sqfs), str(sqroot)])
+        mounts.append(sqroot)
+        ls._sh(["mount", "-t", "overlay", "overlay", "-o",
+                f"lowerdir={sqroot},upperdir={up},workdir={wk}", str(root)])
+        mounts.append(root)
+        # /userdata = the SHARE (writes persist into the image); pseudo-fs binds.
+        (root / "userdata").mkdir(exist_ok=True)
+        ls._sh(["mount", "--bind", str(userdata), str(root / "userdata")])
+        mounts.append(root / "userdata")
+        for spec, dst in [(["--bind", "/dev"], root / "dev"),
+                          (["--bind", "/dev/pts"], root / "dev/pts"),
+                          (["-t", "proc", "proc"], root / "proc"),
+                          (["-t", "sysfs", "sys"], root / "sys"),
+                          (["-t", "tmpfs", "tmpfs"], root / "run")]:
+            dst.mkdir(parents=True, exist_ok=True)
+            ls._sh(["mount", *spec, str(dst)])
+            mounts.append(dst)
+        # Foreign arch (ARM image on x86 worker): rely on the registered
+        # qemu-<arch>-static binfmt handler; copy the static binary in too.
+        if sarch != os.uname().machine:
+            q = Path(f"/usr/bin/qemu-{sarch}-static")
+            if q.exists():
+                (root / "usr/bin").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(q, root / "usr/bin" / q.name)
+        try:
+            shutil.copy2("/etc/resolv.conf", root / "etc/resolv.conf")
+        except OSError:
+            pass
+
+        saltcall = f"/userdata/system/bin/{sarch}/salt/salt-call"
+        _emit(build, "salt-apply",
+              f"Bake-time masterless apply (arch={sarch}) of: {', '.join(apply)}.")
+        ok = True
+        for state in apply:
+            cp = ls._sh(["chroot", str(root), saltcall,
+                         "--config-dir=/userdata/system/opt/salt/conf",
+                         "--local", "--state-output=mixed", "--retcode-passthrough",
+                         "state.apply", state],
+                        check=False, capture=True)
+            _emit_cmd(build, "salt-apply", f"salt-call --local state.apply {state}", cp)
+            ok = ok and getattr(cp, "returncode", 1) == 0
+        if ok:
+            # States applied at bake → first-boot hook skips re-applying.
+            (userdata / "system" / ".osbakery-provisioned").write_text("baked\n")
+    finally:
+        for m in reversed(mounts):
+            ls._sh(["umount", "-lf", str(m)], check=False)
+
+
 def _dir_size(*roots: Path) -> int:
     total = 0
     for r in roots:
@@ -335,6 +433,9 @@ def provision(ctx: "BuildContext") -> bool:
               f"First-boot custom.sh: enable {', '.join(_SERVICES)} + "
               f"salt-call --local state.apply [{', '.join(apply) or 'none'}].")
         ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
+        # Run the pillar-keyed states masterless at bake time (chroot into the
+        # batocera squashfs root) so the apply output lands in the build log.
+        _apply_salt_local(ctx, build, _boot, userdata, apply)
         free_end, _ = _free_mib(userdata)
         _emit(build, "provision",
               f"Batocera provisioned: {', '.join(applied)} + salt roots + model.yaml. "
