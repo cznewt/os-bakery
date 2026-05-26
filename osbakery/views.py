@@ -466,6 +466,7 @@ def baked_images(request: HttpRequest) -> HttpResponse:
             "size_bytes": art.size_bytes if art else 0,
             "filename": art.filename if art else None,
             "token": tok.token if tok else None,
+            "s3_url": art.public_url if art else "",
             "queued_at": b.queued_at,
             "finished_at": b.finished_at,
             "build_time": _fmt_duration(build_secs),
@@ -555,6 +556,7 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
         "device_yaml": device_yaml,
         "cluster_yaml": cluster_yaml,
         "base": base,
+        "s3_url": art.public_url if art else "",
     })
 
 

@@ -32,7 +32,9 @@
     </header>
 
     <main class="pb-24 space-y-6">
-      {% if token %}
+      {% if s3_url %}
+      <a href="{{ s3_url }}" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↓ Download artifact <span class="font-mono text-xs text-stone-400">from S3</span></a>
+      {% elif token %}
       <a href="/d/{{ token }}/" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↓ Download artifact</a>
       {% endif %}
       {% if build.failure_reason %}

@@ -92,7 +92,11 @@
               </td>
               <td class="px-4 py-3">
                 <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
-                  {% if r.token %}
+                  {% if r.s3_url %}
+                  <a href="{{ r.s3_url }}"
+                     data-toast="Downloading {{ r.recipe }} ({{ r.target }}) from S3…" data-toast-level="success"
+                     class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">↓ Download</a>
+                  {% elif r.token %}
                   <a href="/d/{{ r.token }}/"
                      data-toast="Downloading {{ r.recipe }} ({{ r.target }})…" data-toast-level="success"
                      class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">↓ Download</a>

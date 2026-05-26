@@ -202,6 +202,22 @@ class Artifact(models.Model):
     def is_expired(self) -> bool:
         return self.expires_at is not None and self.expires_at < timezone.now()
 
+    @property
+    def public_url(self) -> str:
+        """Browser-reachable S3 URL for the artifact, if configured.
+
+        Built from AWS_S3_PUBLIC_ENDPOINT + bucket + storage_key so the UI can
+        link straight to the object in S3 instead of streaming the bytes
+        through the app. Empty when no public endpoint is set (local backend);
+        callers then fall back to the token download endpoint.
+        """
+        from django.conf import settings
+        base = getattr(settings, "AWS_S3_PUBLIC_ENDPOINT", "") or ""
+        bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "") or ""
+        if self.storage_key and base and bucket:
+            return f"{base.rstrip('/')}/{bucket}/{self.storage_key}"
+        return ""
+
 
 class DownloadToken(models.Model):
     """A bearer token that grants access to an :class:`Artifact`.
