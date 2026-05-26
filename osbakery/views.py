@@ -579,6 +579,7 @@ def clusters(request: HttpRequest) -> HttpResponse:
         .annotate(
             baked=Count("build_requests", filter=Q(build_requests__artifact__isnull=False), distinct=True),
             builds=Count("build_requests", distinct=True),
+            nodes=Count("nodes", filter=Q(nodes__is_active=True), distinct=True),
         )
         .order_by("tenant__name", "name")
     )
