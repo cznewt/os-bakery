@@ -81,7 +81,7 @@
                 {% endif %}
               </td>
               <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">
-                {% if r.finished_at %}{{ r.finished_at|date:"Y-m-d H:i" }}{% else %}<span class="text-stone-400">—</span>{% endif %}
+                {% if r.finished_at %}<div>{{ r.finished_at|date:"Y-m-d" }}</div><div class="text-xs text-stone-400">{{ r.finished_at|date:"H:i" }}</div>{% else %}<span class="text-stone-400">—</span>{% endif %}
               </td>
               <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">
                 {% if r.build_time %}<span title="{{ r.finished_at|date:'Y-m-d H:i' }}">{{ r.build_time }}</span>{% else %}<span class="text-stone-400">—</span>{% endif %}
