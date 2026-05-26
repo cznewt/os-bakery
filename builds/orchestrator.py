@@ -16,7 +16,7 @@ import hashlib
 import logging
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -37,6 +37,9 @@ class BuildContext:
     target_image: Path
     pillar_path: Path
     top_path: Path
+    # The merged device+cluster config, populated by _write_pillar; provisioners
+    # write it onto the image as model.yaml.
+    effective_model: dict = field(default_factory=dict)
 
 
 def _emit(build: BuildRequest, phase: str, message: str, level: str = "info", **data) -> None:
@@ -143,29 +146,45 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def _write_pillar(ctx: BuildContext) -> None:
-    """Materialize the build's pillar tree on disk.
+def _device_model(build: BuildRequest) -> dict:
+    """The device's own contribution to the model: its hardware identity."""
+    ht = build.hardware_target
+    arch = getattr(ht, "architecture", None)
+    return {
+        "device": {
+            "target": ht.slug,
+            "model": ht.name,
+            "soc": ht.soc or None,
+            "arch": getattr(arch, "slug", None),
+            "boot_method": ht.boot_method,
+        },
+    }
+
+
+def _build_effective_model(build: BuildRequest) -> dict:
+    """Merge the layers that define a baked device into one model.
 
     Layers (later wins):
 
-    1. Recipe version's ``pillar_overrides``.
-    2. Cluster's ``parameters`` JSON (when ``build.cluster`` is set) —
+    1. Recipe version's ``pillar_overrides`` (the recipe defaults).
+    2. The device's hardware identity (model / SoC / arch / boot).
+    3. Cluster's ``parameters`` JSON (when ``build.cluster`` is set) —
        shared config like kubeadm tokens, MQTT brokers, ZeroTier network
        IDs that every device joining the cluster inherits.
-    3. The user's ``option_values`` under the ``options`` key — per-build
+    4. The user's ``option_values`` under the ``options`` key — per-build
        answers from the bake form (hostname, Wi-Fi, …).
-    4. Computed osbakery metadata.
-    """
-    build = ctx.build
-    rv = build.recipe_version
+    5. Computed osbakery metadata.
 
-    pillar: dict = {}
-    pillar = _deep_merge(pillar, rv.pillar_overrides or {})
+    This is both the salt pillar AND the model.yaml written onto the image.
+    """
+    rv = build.recipe_version
+    model: dict = {}
+    model = _deep_merge(model, rv.pillar_overrides or {})
+    model = _deep_merge(model, _device_model(build))
     if build.cluster_id is not None:
-        cluster_params = build.cluster.parameters or {}
-        pillar = _deep_merge(pillar, cluster_params)
-    pillar = _deep_merge(pillar, {"options": dict(build.option_values or {})})
-    pillar = _deep_merge(pillar, {
+        model = _deep_merge(model, build.cluster.parameters or {})
+    model = _deep_merge(model, {"options": dict(build.option_values or {})})
+    model = _deep_merge(model, {
         "osbakery": {
             "build_id": str(build.id),
             "recipe": rv.recipe.slug,
@@ -178,6 +197,18 @@ def _write_pillar(ctx: BuildContext) -> None:
                         if build.cluster_id else None),
         },
     })
+    return model
+
+
+def _write_pillar(ctx: BuildContext) -> None:
+    """Materialize the effective model as the build's pillar + persist it."""
+    build = ctx.build
+    rv = build.recipe_version
+
+    pillar = _build_effective_model(build)
+    ctx.effective_model = pillar
+    build.effective_model = pillar
+    build.save(update_fields=["effective_model"])
 
     (ctx.pillar_path / "top.sls").write_text(
         yaml.safe_dump({"base": {"*": [build.recipe_version.recipe.slug]}})

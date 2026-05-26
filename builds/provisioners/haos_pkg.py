@@ -109,6 +109,10 @@ def provision(ctx: "BuildContext") -> bool:
             _emit(build, "provision", "Add-on repos recorded (store pre-seed staged).",
                   level="info", addon_repos=repos)
 
+        # Bake the merged device+cluster model onto the boot partition.
+        ls.write_model_file(boot, "CONFIG/osbakery-model.yaml", ctx.effective_model)
+        did.append("model.yaml")
+
         _emit(build, "provision",
               f"HAOS: baked {', '.join(did) or 'no first-boot config (none provided)'}.",
               backend="haos_pkg")

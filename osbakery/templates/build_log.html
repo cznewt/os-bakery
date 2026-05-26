@@ -39,6 +39,39 @@
       <div class="rounded-md border border-red-300 bg-red-50 text-red-800 px-4 py-3 text-sm font-mono">{{ build.failure_reason }}</div>
       {% endif %}
 
+      {% if effective_yaml %}
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">
+          <span>Effective model
+            <span class="text-stone-400 font-mono text-xs">baked onto the image as model.yaml</span>
+          </span>
+          {% if build.cluster_id %}
+          <span class="text-xs font-mono text-stone-500">device ⊕ {{ build.cluster.tenant.slug }}/{{ build.cluster.slug }}</span>
+          {% else %}
+          <span class="text-xs font-mono text-stone-400">standalone (no cluster)</span>
+          {% endif %}
+        </div>
+        <div class="p-5 grid gap-5 md:grid-cols-2">
+          <div class="md:col-span-2">
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Merged (device + recipe + options + cluster)</div>
+            <pre class="text-xs text-stone-800 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ effective_yaml }}</pre>
+          </div>
+          {% if device_yaml %}
+          <div>
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Device model</div>
+            <pre class="text-xs text-stone-700 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ device_yaml }}</pre>
+          </div>
+          {% endif %}
+          {% if cluster_yaml %}
+          <div>
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Cluster model</div>
+            <pre class="text-xs text-stone-700 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ cluster_yaml }}</pre>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
       <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-stone-200 font-medium">Timeline <span class="text-stone-400 font-mono text-sm">({{ events|length }} events)</span></div>
         <ol class="divide-y divide-stone-100">

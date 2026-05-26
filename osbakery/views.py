@@ -483,11 +483,26 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
         })
     art = getattr(build, "artifact", None)
     tok = art.tokens.first() if art else None
+
+    # The effective model baked onto the image (device + cluster + options),
+    # plus its device & cluster layers shown separately for clarity.
+    import yaml as _yaml
+    em = build.effective_model or {}
+    effective_yaml = (_yaml.safe_dump(em, sort_keys=False, default_flow_style=False)
+                      if em else "")
+    device_block = em.get("device") or {}
+    device_yaml = (_yaml.safe_dump(device_block, sort_keys=False) if device_block else "")
+    cluster_params = (build.cluster.parameters or {}) if build.cluster_id else {}
+    cluster_yaml = (_yaml.safe_dump(cluster_params, sort_keys=False)
+                    if cluster_params else "")
     return render(request, "build_log.html", {
         "build": build,
         "events": events,
         "artifact": art,
         "token": tok.token if tok else None,
+        "effective_yaml": effective_yaml,
+        "device_yaml": device_yaml,
+        "cluster_yaml": cluster_yaml,
     })
 
 

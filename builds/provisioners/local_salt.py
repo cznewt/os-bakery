@@ -32,6 +32,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
 from django.conf import settings
 
 from builds.models import BuildEvent
@@ -139,6 +140,24 @@ def _classify_partitions(parts: list[Path]) -> tuple[Path, Path | None]:
 def _mount(src: str, dst: Path, *, opts: list[str] | None = None) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     _sh(["mount", *(opts or []), src, str(dst)])
+
+
+def write_model_file(root: Path, rel_path: str, model: dict) -> Path:
+    """Write the effective model as YAML onto a mounted partition.
+
+    ``root`` is the mountpoint, ``rel_path`` the destination relative to it
+    (e.g. ``etc/osbakery/model.yaml``). Used by every provisioner so the merged
+    device+cluster config physically travels with the baked image.
+    """
+    dst = root / rel_path
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(yaml.safe_dump(model or {}, default_flow_style=False,
+                                  sort_keys=False))
+    try:
+        dst.chmod(0o644)
+    except OSError:
+        pass  # vfat / exfat can't chmod
+    return dst
 
 
 def _boot_mount_rel(rootfs: Path) -> str:
@@ -287,6 +306,10 @@ def provision(ctx: "BuildContext") -> bool:
             _install_qemu(rootfs, guest_arch)
 
         _stage_salt(ctx, rootfs)
+
+        # Bake the merged device+cluster model onto the image for inspection.
+        write_model_file(rootfs, "etc/osbakery/model.yaml", ctx.effective_model)
+        _emit(build, "salt", "Wrote /etc/osbakery/model.yaml (effective model).")
 
         _emit(build, "salt", "Installing salt + running salt-call --local in chroot.")
         proc = subprocess.run(

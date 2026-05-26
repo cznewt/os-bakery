@@ -98,6 +98,17 @@ class BuildRequest(models.Model):
         ),
     )
 
+    effective_model = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Snapshot of the merged config baked into the image: device "
+            "identity (hardware model/SoC/arch) + recipe defaults + per-build "
+            "options + the joined cluster's parameters. Written verbatim onto "
+            "the image as model.yaml and shown on the baked-image page."
+        ),
+    )
+
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
     queued_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)

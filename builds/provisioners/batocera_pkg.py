@@ -164,9 +164,12 @@ def provision(ctx: "BuildContext") -> bool:
 
         _write_minion_conf(ctx, system)
         _append_custom_sh(system, _SERVICES)
+        # Bake the merged device+cluster model onto the SHARE partition.
+        ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
         _emit(build, "provision",
               f"Batocera: overlaid {', '.join(applied)} + salt minion config + "
-              "first-boot service enable.", backend="batocera_pkg")
+              "first-boot service enable + /userdata/system/osbakery/model.yaml.",
+              backend="batocera_pkg")
         return True
     finally:
         for path in reversed(mounted):
