@@ -109,6 +109,17 @@ RUN curl -fsSL "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_$
     && rm /tmp/packer.zip \
     && packer version
 
+# proxmox-auto-install-assistant — bakes the Proxmox VE installer ISO into an
+# unattended-install ISO (answer.toml). Plus xorriso, which it uses to repack.
+RUN install -d /usr/share/keyrings \
+    && curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg \
+        -o /usr/share/keyrings/proxmox-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/proxmox-archive-keyring.gpg] http://download.proxmox.com/debian/pve trixie pve-no-subscription" \
+        > /etc/apt/sources.list.d/pve.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends proxmox-auto-install-assistant xorriso \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV CELERY_CONCURRENCY=2 \
     CELERY_QUEUES=builds-packer,default \
     BATOCERA_PACKAGES_DIR=/opt/batocera-packages

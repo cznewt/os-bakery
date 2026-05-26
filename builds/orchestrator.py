@@ -267,11 +267,22 @@ def _mount_and_provision(ctx: BuildContext) -> None:
     the in-house chroot path isn't available. If neither runs, the image ships
     as the unmodified upstream base.
     """
-    from builds.provisioners import batocera_pkg, haos_pkg, local_salt, packer_arm_tools
+    from builds.provisioners import (batocera_pkg, haos_pkg, local_salt,
+                                      packer_arm_tools, proxmox_autoinstall)
 
     recipe = ctx.build.recipe_version.recipe
     prov = recipe.provisioner.slug if recipe.provisioner_id else "salt"
     os_slug = recipe.operating_system.slug
+
+    # Proxmox VE — bake the official installer ISO into an unattended-install
+    # ISO (answer.toml). The provisioner repoints ctx.target_image at the ISO.
+    if os_slug == "proxmox-ve":
+        if proxmox_autoinstall.provision(ctx):
+            return
+        _emit(ctx.build, "provision",
+              "Proxmox auto-install prep did not run — shipping the plain ISO.",
+              level="warning")
+        return
 
     # Batocera is buildroot — no apt/chroot-exec. Salt (+ alloy) are baked in by
     # overlaying their pacman packages into the userdata partition.
@@ -322,7 +333,13 @@ def _mount_and_provision(ctx: BuildContext) -> None:
 
 
 def _pack(ctx: BuildContext) -> Path:
-    """Compress the customized image to ``img.xz`` for distribution."""
+    """Compress the customized image to ``img.xz`` for distribution.
+
+    Bootable ISOs (Proxmox auto-install) are published raw so they can be
+    flashed to USB directly without a decompress step.
+    """
+    if ctx.target_image.suffix == ".iso":
+        return ctx.target_image
     compressed = ctx.target_image.with_suffix(ctx.target_image.suffix + ".xz")
     # xz -T0 keeps it fast on big rigs; -9e for tighter compression in CI.
     _run(["xz", "-T0", "-z", "-f", str(ctx.target_image)])
