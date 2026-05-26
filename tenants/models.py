@@ -107,11 +107,23 @@ class Cluster(TimestampedModel):
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge ``override`` into ``base`` (lists replace, not concat)."""
+    """Recursively merge ``override`` into ``base``.
+
+    Nested dicts merge; lists union (base first, then new override items) so a
+    node's list values add to the cluster's baseline; scalars override. Mirrors
+    builds.orchestrator._deep_merge.
+    """
     result = dict(base)
     for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
+        existing = result.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(existing, value)
+        elif isinstance(existing, list) and isinstance(value, list):
+            merged = list(existing)
+            for item in value:
+                if item not in merged:
+                    merged.append(item)
+            result[key] = merged
         else:
             result[key] = value
     return result

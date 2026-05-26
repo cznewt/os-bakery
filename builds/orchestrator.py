@@ -132,15 +132,24 @@ def _prepare_workspace(build: BuildRequest) -> BuildContext:
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge `override` into `base`. Lists are replaced, not concatenated."""
+    """Recursively merge ``override`` into ``base``.
+
+    Nested dicts merge key-by-key; lists are unioned (base items first, then
+    override items not already present) so a node's list values (extra repos,
+    packages, Wi-Fi, SSH keys) add to the cluster's baseline instead of
+    replacing it; scalars override.
+    """
     result = dict(base)
     for key, value in override.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
-            result[key] = _deep_merge(result[key], value)
+        existing = result.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(existing, value)
+        elif isinstance(existing, list) and isinstance(value, list):
+            merged = list(existing)
+            for item in value:
+                if item not in merged:
+                    merged.append(item)
+            result[key] = merged
         else:
             result[key] = value
     return result
