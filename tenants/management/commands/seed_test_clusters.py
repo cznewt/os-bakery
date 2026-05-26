@@ -12,7 +12,9 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from tenants.models import Cluster, Tenant
+from catalog.models import HardwareTarget
+from recipes.models import Recipe
+from tenants.models import Cluster, Node, Tenant
 
 TENANT = {"slug": "test", "name": "Test Lab",
           "description": "Throwaway tenant for testing bake configurations."}
@@ -56,6 +58,17 @@ CLUSTERS = [
     }, ["test", "iot"]),
 ]
 
+# (cluster_slug, node_slug, name, preset_slug, target_slug, hostname, params, tags)
+NODES = [
+    ("test-arcade", "cabinet-01", "Arcade Cabinet 01", "batocera-arcade",
+     "pc-amd64", "cabinet-01",
+     {"batocera": {"boot_to_arcade": True, "controllers": {"players": 2}}},
+     ["test", "cabinet"]),
+    ("test-arcade", "handheld-01", "Handheld 01", "batocera-handheld",
+     "loki-zero", "handheld-01",
+     {"batocera": {"power": {"suspend_minutes": 5}}}, ["test", "handheld"]),
+]
+
 
 class Command(BaseCommand):
     help = "Create a `test` tenant with one cluster per kind."
@@ -88,4 +101,34 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  {'created' if made else 'updated'}: {tenant.slug}/{c.slug} "
                 f"({kind})"
+            )
+
+        # Nodes — the units we bake images onto.
+        for (cl_slug, slug, name, preset_slug, target_slug, hostname,
+             params, tags) in NODES:
+            cluster = Cluster.objects.filter(tenant=tenant, slug=cl_slug).first()
+            preset = Recipe.objects.filter(slug=preset_slug).first()
+            target = HardwareTarget.objects.filter(slug=target_slug).first()
+            if not (cluster and preset and target):
+                self.stdout.write(
+                    f"  skip node {slug}: missing "
+                    f"{'cluster' if not cluster else ''}"
+                    f"{'preset' if not preset else ''}"
+                    f"{'target' if not target else ''}"
+                )
+                continue
+            n, made = Node.objects.get_or_create(
+                cluster=cluster, slug=slug,
+                defaults={"name": name, "hostname": hostname, "preset": preset,
+                          "hardware_target": target, "parameters": params,
+                          "tags": tags},
+            )
+            if not made:
+                n.name, n.hostname, n.preset, n.hardware_target = (
+                    name, hostname, preset, target)
+                n.parameters, n.tags = params, tags
+                n.save()
+            self.stdout.write(
+                f"  {'created' if made else 'updated'}: node "
+                f"{tenant.slug}/{cl_slug}/{slug} ({preset_slug} on {target_slug})"
             )

@@ -183,6 +183,9 @@ def _build_effective_model(build: BuildRequest) -> dict:
     model = _deep_merge(model, _device_model(build))
     if build.cluster_id is not None:
         model = _deep_merge(model, build.cluster.parameters or {})
+    # The node is the per-device layer — more specific than the shared cluster.
+    if build.node_id is not None:
+        model = _deep_merge(model, build.node.parameters or {})
     model = _deep_merge(model, {"options": dict(build.option_values or {})})
     model = _deep_merge(model, {
         "osbakery": {
@@ -195,6 +198,8 @@ def _build_effective_model(build: BuildRequest) -> dict:
             "tenant": build.tenant.slug if build.tenant_id else None,
             "cluster": (f"{build.cluster.tenant.slug}/{build.cluster.slug}"
                         if build.cluster_id else None),
+            "node": (f"{build.node.cluster.tenant.slug}/{build.node.cluster.slug}"
+                     f"/{build.node.slug}" if build.node_id else None),
         },
     })
     return model

@@ -97,6 +97,18 @@ class BuildRequest(models.Model):
             "merges into the pillar at bake time."
         ),
     )
+    node = models.ForeignKey(
+        "tenants.Node",
+        on_delete=models.SET_NULL,
+        related_name="build_requests",
+        null=True,
+        blank=True,
+        help_text=(
+            "Optional Node this build bakes. When set, the node's parameters "
+            "merge into the effective model (winning over the cluster) and the "
+            "build inherits the node's cluster + hardware target."
+        ),
+    )
 
     effective_model = models.JSONField(
         default=dict,

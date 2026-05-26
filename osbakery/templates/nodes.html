@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nodes · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern { background-image: linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px); background-size: 32px 32px; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+  <div id="toasts" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-80"></div>
+  <div class="max-w-7xl mx-auto px-6 md:px-10">
+    <header class="py-8 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold">Nodes</h1>
+        <p class="text-stone-500 text-sm mt-1">
+          The units we bake images onto — each joins a cluster, implements a preset, and targets one device.
+          {% if f_cluster %}<span class="font-mono">cluster={{ f_cluster }}</span> · {% endif %}{{ total }} node{{ total|pluralize }}.
+        </p>
+      </div>
+      <nav class="text-sm font-mono text-stone-500 flex gap-4">
+        <a href="/clusters/" class="hover:text-stone-900">clusters</a>
+        <a href="/baked/" class="hover:text-stone-900">baked images</a>
+        <a href="/admin/tenants/node/add/" class="hover:text-stone-900">+ new node</a>
+        <a href="/" class="hover:text-stone-900">← home</a>
+      </nav>
+    </header>
+
+    <main class="pb-24">
+      {% if f_cluster %}<a href="/nodes/" class="inline-block mb-4 text-xs font-mono text-sky-700 hover:underline">✕ clear filter</a>{% endif %}
+      <div class="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+        <table class="w-full text-sm">
+          <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
+            <tr>
+              <th class="text-left px-6 py-3 font-medium">Node</th>
+              <th class="text-left px-4 py-3 font-medium">Cluster</th>
+              <th class="text-left px-4 py-3 font-medium">Preset</th>
+              <th class="text-left px-4 py-3 font-medium">Target</th>
+              <th class="text-left px-4 py-3 font-medium">Last bake</th>
+              <th class="text-left px-4 py-3 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            {% for r in rows %}
+            <tr>
+              <td class="px-6 py-3 whitespace-nowrap">
+                <div class="font-mono"><a href="/nodes/{{ r.id }}/" class="hover:underline">{{ r.slug }}</a></div>
+                <div class="text-xs text-stone-400 font-mono">{{ r.hostname }}</div>
+              </td>
+              <td class="px-4 py-3 font-mono text-stone-600">
+                <a href="/nodes/?cluster={{ r.cluster_slug }}" class="hover:underline">{{ r.cluster }}</a>
+                <div class="text-xs text-stone-400">{{ r.cluster_kind }}</div>
+              </td>
+              <td class="px-4 py-3"><div class="font-mono">{{ r.preset }}</div><div class="text-xs text-stone-400 font-mono">{{ r.os }}</div></td>
+              <td class="px-4 py-3 font-mono">{{ r.target }} <span class="text-stone-400">{{ r.arch }}</span></td>
+              <td class="px-4 py-3">
+                {% if r.last_status == 'succeeded' %}<a href="/baked/{{ r.last_build_id }}/log/" class="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>{{ r.last_status }}</a>
+                {% elif r.last_status == 'failed' %}<a href="/baked/{{ r.last_build_id }}/log/" class="inline-flex items-center gap-1 text-xs text-red-700 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>{{ r.last_status }}</a>
+                {% elif r.last_status %}<a href="/baked/{{ r.last_build_id }}/log/" class="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{{ r.last_status }}</a>
+                {% else %}<span class="text-stone-400 text-xs">never baked</span>{% endif %}
+              </td>
+              <td class="px-4 py-3">
+                <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
+                  <a href="/nodes/{{ r.id }}/" class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">Open</a>
+                  <form method="post" action="/nodes/{{ r.id }}/bake/" class="contents">
+                    {% csrf_token %}
+                    <button type="submit" data-toast="Baking {{ r.slug }}…" data-toast-level="success"
+                            class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100 hover:text-stone-900">↻ Bake</button>
+                  </form>
+                </span>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-center py-16 text-stone-500">No nodes yet. <a href="/admin/tenants/node/add/" class="text-sky-700 hover:underline">Create one</a>.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+  <script>
+    function showToast(text, level){level=level||"info";const c={success:"border-emerald-300 bg-emerald-50 text-emerald-800",info:"border-sky-300 bg-sky-50 text-sky-800",error:"border-red-300 bg-red-50 text-red-800"};const el=document.createElement("div");el.className="rounded-md border px-3 py-2 text-sm shadow-sm transition-all duration-300 "+(c[level]||c.info);el.textContent=text;document.getElementById("toasts").appendChild(el);setTimeout(()=>el.remove(),4000);}
+    document.addEventListener("click",(e)=>{const a=e.target.closest("[data-toast]");if(a)showToast(a.getAttribute("data-toast"),a.getAttribute("data-toast-level")||"info");});
+  </script>
+</body>
+</html>

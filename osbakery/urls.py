@@ -4,6 +4,7 @@ from django.urls import include, path
 from .views import (
     baked_images,
     bake_index,
+    bake_node,
     bake_recipe,
     base_images,
     build_log,
@@ -18,6 +19,8 @@ from .views import (
     download_base_image,
     drop_base_image,
     home,
+    node_detail,
+    nodes,
     provisioners,
     sync_base_image,
 )
@@ -33,6 +36,9 @@ urlpatterns = [
     path("clusters/<slug:slug>/", cluster_detail, name="cluster_detail"),
     path("clusters/<slug:slug>/edit/", cluster_edit, name="cluster_edit"),
     path("clusters/<slug:slug>/delete/", cluster_delete, name="cluster_delete"),
+    path("nodes/", nodes, name="nodes"),
+    path("nodes/<int:pk>/", node_detail, name="node_detail"),
+    path("nodes/<int:pk>/bake/", bake_node, name="bake_node"),
     path("provisioners/", provisioners, name="provisioners"),
     path("images/<int:pk>/download/", download_base_image, name="download_base_image"),
     path("images/<int:pk>/sync/", sync_base_image, name="sync_base_image"),

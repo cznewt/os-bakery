@@ -116,3 +116,119 @@ class Cluster(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.tenant.slug}/{self.slug}"
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge ``override`` into ``base`` (lists replace, not concat)."""
+    result = dict(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+class Node(TimestampedModel):
+    """A managed unit we bake an image for.
+
+    A Node is the *thing* an image is baked onto: it belongs to a Cluster,
+    implements a preset (recipe = the role it plays), targets one piece of
+    hardware, and carries its own ``parameters`` overrides. Its ``effective_model``
+    is the joined metadata — preset defaults ⊕ device identity ⊕ cluster
+    parameters ⊕ this node's parameters — i.e. exactly what gets baked onto the
+    image when you bake the node.
+    """
+
+    cluster = models.ForeignKey(
+        Cluster,
+        on_delete=models.CASCADE,
+        related_name="nodes",
+        help_text="The cluster this node joins; its parameters merge in.",
+    )
+    slug = models.SlugField(
+        max_length=80,
+        help_text="Unique within the cluster — e.g. `cabinet-01`, `kube-master`.",
+    )
+    name = models.CharField(max_length=120)
+    hostname = models.CharField(
+        max_length=120, blank=True,
+        help_text="Hostname / salt minion id baked in. Defaults to the slug.",
+    )
+    preset = models.ForeignKey(
+        "recipes.Recipe",
+        on_delete=models.PROTECT,
+        related_name="nodes",
+        help_text="The preset (recipe / role) this node implements.",
+    )
+    hardware_target = models.ForeignKey(
+        "catalog.HardwareTarget",
+        on_delete=models.PROTECT,
+        related_name="nodes",
+        help_text="The hardware we bake the image for.",
+    )
+    upstream_image = models.ForeignKey(
+        "catalog.UpstreamImage",
+        on_delete=models.SET_NULL,
+        related_name="nodes",
+        null=True, blank=True,
+        help_text="Optional pinned base image; otherwise resolved from the "
+                  "preset's release + this node's hardware target at bake time.",
+    )
+    parameters = models.JSONField(
+        default=dict, blank=True,
+        help_text="Node-specific pillar overrides — the most specific layer, "
+                  "winning over the cluster's shared parameters.",
+    )
+    tags = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["cluster__tenant__name", "cluster__slug", "slug"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cluster", "slug"],
+                name="uniq_node_per_cluster",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.cluster.tenant.slug}/{self.cluster.slug}/{self.slug}"
+
+    @property
+    def tenant(self):
+        return self.cluster.tenant
+
+    @property
+    def minion_id(self) -> str:
+        return self.hostname or self.slug
+
+    @property
+    def effective_model(self) -> dict:
+        """Joined metadata for the preset this node implements.
+
+        preset defaults ⊕ device identity ⊕ cluster.parameters ⊕ node.parameters
+        ⊕ node identity. This is the design-time view of what a bake produces.
+        """
+        rv = (self.preset.versions.filter(is_current=True).first()
+              or self.preset.versions.order_by("-created_at").first())
+        ht = self.hardware_target
+        arch = getattr(ht, "architecture", None)
+        model: dict = {}
+        model = _deep_merge(model, (rv.pillar_overrides if rv else {}) or {})
+        model = _deep_merge(model, {"device": {
+            "target": ht.slug, "model": ht.name, "soc": ht.soc or None,
+            "arch": getattr(arch, "slug", None), "boot_method": ht.boot_method,
+        }})
+        model = _deep_merge(model, self.cluster.parameters or {})
+        model = _deep_merge(model, self.parameters or {})
+        model = _deep_merge(model, {"options": {
+            "hostname": self.minion_id, "minion_id": self.minion_id,
+        }})
+        model = _deep_merge(model, {"osbakery": {
+            "node": f"{self.cluster.tenant.slug}/{self.cluster.slug}/{self.slug}",
+            "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
+            "preset": self.preset.slug,
+        }})
+        return model

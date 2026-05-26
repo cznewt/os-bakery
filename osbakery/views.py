@@ -19,7 +19,7 @@ from django.views.decorators.http import require_POST
 from builds.models import BuildRequest
 from catalog.models import HardwareTarget, OperatingSystem, OSRelease, UpstreamImage
 from recipes.models import Recipe
-from tenants.models import Cluster
+from tenants.models import Cluster, Node
 
 
 # simple-icons.org serves a public, versioned CDN of brand SVGs. Each entry
@@ -1138,3 +1138,113 @@ def doc_page(request: HttpRequest, slug: str) -> HttpResponse:
             for s, m in DOCS_ON_SITE.items() if s != slug
         ],
     })
+
+
+# ---------------------------------------------------------------------------
+# Nodes — the units we bake images onto (cluster + preset + hardware)
+# ---------------------------------------------------------------------------
+
+def nodes(request: HttpRequest) -> HttpResponse:
+    """All nodes, grouped by cluster, with their preset + target + last bake."""
+    f_cluster = request.GET.get("cluster") or ""
+    qs = (
+        Node.objects.filter(is_active=True)
+        .select_related("cluster__tenant", "preset__operating_system",
+                        "hardware_target__architecture")
+        .order_by("cluster__tenant__name", "cluster__slug", "slug")
+    )
+    if f_cluster:
+        qs = qs.filter(cluster__slug=f_cluster)
+
+    rows = []
+    for n in qs:
+        last = (n.build_requests.order_by("-queued_at").first())
+        rows.append({
+            "id": n.id,
+            "slug": n.slug,
+            "name": n.name,
+            "hostname": n.minion_id,
+            "cluster": f"{n.cluster.tenant.slug}/{n.cluster.slug}",
+            "cluster_slug": n.cluster.slug,
+            "cluster_kind": n.cluster.get_kind_display(),
+            "preset": n.preset.slug,
+            "os": n.preset.operating_system.slug,
+            "target": n.hardware_target.slug,
+            "arch": n.hardware_target.architecture.slug,
+            "tags": n.tags or [],
+            "last_status": last.status if last else None,
+            "last_build_id": last.id if last else None,
+        })
+    return render(request, "nodes.html", {
+        "rows": rows, "total": len(rows), "f_cluster": f_cluster,
+    })
+
+
+def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
+    """One node: its joined metadata (effective model) + recent bakes + bake."""
+    node = get_object_or_404(
+        Node.objects.select_related(
+            "cluster__tenant", "preset__operating_system",
+            "hardware_target__architecture", "upstream_image__release",
+        ),
+        pk=pk,
+    )
+    import yaml as _yaml
+    model = node.effective_model
+    model_yaml = _yaml.safe_dump(model, sort_keys=False, default_flow_style=False)
+    cluster_params = node.cluster.parameters or {}
+    cluster_yaml = _yaml.safe_dump(cluster_params, sort_keys=False) if cluster_params else ""
+    node_yaml = _yaml.safe_dump(node.parameters or {}, sort_keys=False) if node.parameters else ""
+
+    builds = list(
+        node.build_requests.select_related("artifact").order_by("-queued_at")[:10]
+    )
+    return render(request, "node_detail.html", {
+        "node": node,
+        "model_yaml": model_yaml,
+        "cluster_yaml": cluster_yaml,
+        "node_yaml": node_yaml,
+        "builds": builds,
+    })
+
+
+@require_POST
+def bake_node(request: HttpRequest, pk: int) -> HttpResponse:
+    """Create a BuildRequest from a node (its cluster + preset + target)."""
+    node = get_object_or_404(Node.objects.select_related("cluster", "preset"), pk=pk)
+    recipe = node.preset
+    version = (recipe.versions.filter(is_current=True).first()
+               or recipe.versions.order_by("-created_at").first())
+    if version is None:
+        messages.error(request, f"Preset {recipe.slug} has no published version.")
+        return redirect("node_detail", pk=pk)
+
+    img = node.upstream_image
+    if img is None:
+        release = recipe.pinned_release or recipe.operating_system.releases.filter(
+            is_default=True
+        ).first()
+        if release:
+            img = UpstreamImage.objects.filter(
+                release=release, hardware_target=node.hardware_target
+            ).order_by("variant").first()
+    if img is None:
+        messages.error(
+            request,
+            f"No base image for {recipe.operating_system.slug} on "
+            f"{node.hardware_target.slug} — sync one or pin it on the node.",
+        )
+        return redirect("node_detail", pk=pk)
+
+    build = BuildRequest.objects.create(
+        recipe_version=version,
+        hardware_target=node.hardware_target,
+        upstream_image=img,
+        option_values={"hostname": node.minion_id, "minion_id": node.minion_id},
+        label=node.minion_id,
+        cluster=node.cluster,
+        tenant=node.cluster.tenant,
+        node=node,
+    )
+    messages.success(request, f"Baking node {node.slug} — build {build.id} queued.")
+    return redirect("build_log", build_id=build.id)

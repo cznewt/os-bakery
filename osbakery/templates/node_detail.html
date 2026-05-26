@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ node.slug }} · node · os-bakery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-feature-settings: "ss01", "cv11"; }
+    .grid-pattern { background-image: linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px); background-size: 32px 32px; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
+  <div class="max-w-5xl mx-auto px-6 md:px-10">
+    <header class="py-8 flex items-start justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold font-mono">{{ node.slug }}
+          <span class="text-stone-400 text-base">{{ node.name }}</span>
+        </h1>
+        <p class="text-stone-500 text-sm mt-1 font-mono">
+          <a href="/nodes/?cluster={{ node.cluster.slug }}" class="hover:underline">{{ node.cluster.tenant.slug }}/{{ node.cluster.slug }}</a>
+          · preset <span class="text-stone-700">{{ node.preset.slug }}</span>
+          · {{ node.hardware_target.slug }} ({{ node.hardware_target.architecture.slug }})
+          · host <span class="text-stone-700">{{ node.minion_id }}</span>
+        </p>
+      </div>
+      <nav class="text-sm font-mono text-stone-500 flex gap-4">
+        <a href="/nodes/" class="hover:text-stone-900">← nodes</a>
+        <a href="/admin/tenants/node/{{ node.id }}/change/" class="hover:text-stone-900">edit</a>
+      </nav>
+    </header>
+
+    {% if messages %}
+    <div class="mb-6 space-y-2">
+      {% for m in messages %}
+      <div class="px-4 py-2 rounded-lg text-sm {% if m.tags == 'error' %}bg-red-50 text-red-800 border border-red-200{% elif m.tags == 'success' %}bg-emerald-50 text-emerald-800 border border-emerald-200{% else %}bg-stone-100 text-stone-700{% endif %}">{{ m }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <main class="pb-24 space-y-6">
+      <form method="post" action="/nodes/{{ node.id }}/bake/">
+        {% csrf_token %}
+        <button type="submit" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↻ Bake this node</button>
+      </form>
+
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">
+          <span>Joined metadata
+            <span class="text-stone-400 font-mono text-xs">preset ⊕ device ⊕ cluster ⊕ node — baked onto the image as model.yaml</span>
+          </span>
+        </div>
+        <div class="p-5 grid gap-5 md:grid-cols-2">
+          <div class="md:col-span-2">
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Effective model</div>
+            <pre class="text-xs text-stone-800 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ model_yaml }}</pre>
+          </div>
+          {% if node_yaml %}
+          <div>
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Node parameters (this layer)</div>
+            <pre class="text-xs text-stone-700 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ node_yaml }}</pre>
+          </div>
+          {% endif %}
+          {% if cluster_yaml %}
+          <div>
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Cluster parameters</div>
+            <pre class="text-xs text-stone-700 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ cluster_yaml }}</pre>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium">Recent bakes <span class="text-stone-400 font-mono text-sm">({{ builds|length }})</span></div>
+        <ol class="divide-y divide-stone-100">
+          {% for b in builds %}
+          <li class="px-5 py-3 flex items-center justify-between text-sm">
+            <a href="/baked/{{ b.id }}/log/" class="font-mono text-stone-700 hover:underline">{{ b.id }}</a>
+            <span class="flex items-center gap-4">
+              <span class="font-mono text-xs text-stone-400">{{ b.queued_at|date:"Y-m-d H:i" }}</span>
+              {% if b.status == 'succeeded' %}<span class="text-xs text-emerald-700">{{ b.status }}</span>
+              {% elif b.status == 'failed' %}<span class="text-xs text-red-700">{{ b.status }}</span>
+              {% else %}<span class="text-xs text-amber-600">{{ b.status }}</span>{% endif %}
+            </span>
+          </li>
+          {% empty %}
+          <li class="px-5 py-8 text-center text-stone-500 text-sm">This node hasn't been baked yet.</li>
+          {% endfor %}
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
