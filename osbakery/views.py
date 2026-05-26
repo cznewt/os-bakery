@@ -79,9 +79,10 @@ OS_LOGOS: dict[str, dict[str, str]] = {
 
 
 # The effective model carries two conceptual sets. Image metadata describes the
-# artifact itself (hardware identity + build/osbakery identity); everything else
-# is provisioner metadata — the pillar the provisioner (salt/…) consumes.
-_IMAGE_MODEL_KEYS = {"device", "osbakery"}
+# artifact itself — hardware identity, build/osbakery identity, the role it
+# implements and the per-build options (hostname/minion id). Everything else is
+# provisioner metadata — the pillar the provisioner (salt/…) consumes.
+_IMAGE_MODEL_KEYS = {"device", "osbakery", "role", "options"}
 
 
 def _split_model(model: dict) -> tuple[dict, dict]:
