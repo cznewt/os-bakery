@@ -86,12 +86,31 @@ def _meta_data(ctx: "BuildContext") -> str:
     return f"instance-id: osbakery-{ctx.build.id}\nlocal-hostname: {host}\n"
 
 
+def _is_qcow2(path: Path) -> bool:
+    try:
+        with path.open("rb") as fh:
+            return fh.read(4) == b"QFI\xfb"
+    except OSError:
+        return False
+
+
 def provision(ctx: "BuildContext") -> bool:
     build = ctx.build
+    # Ubuntu cloud images are qcow2 (despite the .img name) — losetup can't see
+    # their partitions, so convert to raw, mount that, then convert back.
+    src = ctx.target_image
+    qcow2 = _is_qcow2(src)
+    raw = ctx.work_dir / "ci-raw.img"
+    img = src
+    if qcow2:
+        _emit(build, "cloud-init", "Source is qcow2 — converting to raw to mount.")
+        ls._sh(["qemu-img", "convert", "-O", "raw", str(src), str(raw)])
+        img = raw
+
     lo: str | None = None
     mounted: list[Path] = []
     try:
-        lo, parts = ls._attach_loop(ctx.target_image)
+        lo, parts = ls._attach_loop(img)
         root_part, boot_part = ls._classify_partitions(parts)
         user_data, meta_data = _user_data(ctx), _meta_data(ctx)
 
@@ -124,9 +143,14 @@ def provision(ctx: "BuildContext") -> bool:
               f"Baked NoCloud user-data at {where}: salt-bootstrap + masterless "
               f"state.highstate on first boot.",
               backend="cloud_init", output_tail=user_data[:1500])
-        return True
     finally:
         for p in reversed(mounted):
             ls._sh(["umount", "-lf", str(p)], check=False)
         if lo:
             ls._sh(["losetup", "-d", lo], check=False)
+
+    if qcow2:
+        # Re-pack the modified raw back into the qcow2 artifact.
+        ls._sh(["qemu-img", "convert", "-O", "qcow2", str(raw), str(src)])
+        raw.unlink(missing_ok=True)
+    return True
