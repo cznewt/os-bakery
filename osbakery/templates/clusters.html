@@ -58,12 +58,6 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Kind</label>
-            <select name="kind" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
-              {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-            </select>
-          </div>
-          <div>
             <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Tags <span class="normal-case text-stone-400">(comma-separated)</span></label>
             <input type="text" name="tags" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
           </div>
@@ -81,29 +75,44 @@
         </form>
       </details>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {% for c in clusters %}
-        <div class="bg-white border border-stone-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-stone-300 transition flex flex-col">
-          <div class="flex items-start justify-between">
-            <a href="/clusters/{{ c.slug }}/" class="group">
-              <div class="font-semibold group-hover:underline">{{ c.name }}</div>
-              <div class="text-xs font-mono text-stone-500 mt-0.5">{{ c.tenant.slug }}/{{ c.slug }}</div>
-            </a>
-            <span class="text-[10px] uppercase font-medium px-2 py-0.5 rounded bg-stone-100 text-stone-600">{{ c.get_kind_display }}</span>
-          </div>
-          {% if c.description %}<p class="text-sm text-stone-500 mt-3 line-clamp-2">{{ c.description }}</p>{% endif %}
-          <div class="flex gap-4 mt-3 text-sm font-mono">
-            <span class="text-emerald-700">{{ c.baked }} baked</span>
-            <span class="text-stone-400">{{ c.builds }} build{{ c.builds|pluralize }}</span>
-          </div>
-          <div class="flex gap-2 mt-4 pt-3 border-t border-stone-100 text-xs font-medium">
-            <a href="/clusters/{{ c.slug }}/" class="px-2 py-1 rounded border border-stone-300 text-stone-700 hover:bg-stone-100">ⓘ Metadata</a>
-            <a href="/baked/?cluster={{ c.slug }}" class="px-2 py-1 rounded border border-stone-300 text-stone-700 hover:bg-stone-100">↳ Baked images</a>
-          </div>
-        </div>
-        {% empty %}
-        <div class="col-span-full text-center py-16 text-stone-500">No clusters yet.</div>
-        {% endfor %}
+      <div class="bg-white border border-stone-200 rounded-xl shadow-sm">
+        <table class="w-full text-sm">
+          <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
+            <tr>
+              <th class="text-left px-6 py-3 font-medium">Cluster</th>
+              <th class="text-left px-4 py-3 font-medium">Tenant</th>
+              <th class="text-left px-4 py-3 font-medium">Tags</th>
+              <th class="text-left px-4 py-3 font-medium">Baked</th>
+              <th class="text-left px-4 py-3 font-medium">Builds</th>
+              <th class="text-left px-4 py-3 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            {% for c in clusters %}
+            <tr>
+              <td class="px-6 py-3">
+                <a href="/clusters/{{ c.slug }}/" class="hover:underline font-medium">{{ c.name }}</a>
+                <div class="text-xs font-mono text-stone-400">{{ c.tenant.slug }}/{{ c.slug }}</div>
+              </td>
+              <td class="px-4 py-3 font-mono text-stone-600">{{ c.tenant.slug }}</td>
+              <td class="px-4 py-3">
+                {% for t in c.tags %}<span class="inline-block text-[11px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 mr-1 mb-1">{{ t }}</span>{% empty %}<span class="text-stone-300">—</span>{% endfor %}
+              </td>
+              <td class="px-4 py-3 font-mono text-emerald-700">{{ c.baked }}</td>
+              <td class="px-4 py-3 font-mono text-stone-500">{{ c.builds }}</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
+                  <a href="/clusters/{{ c.slug }}/" class="px-2 py-1 text-stone-700 hover:bg-stone-100">ⓘ Metadata</a>
+                  <a href="/baked/?cluster={{ c.slug }}" class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100">↳ Baked</a>
+                  <a href="/nodes/?cluster={{ c.slug }}" class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100">⬡ Nodes</a>
+                </span>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-center py-16 text-stone-500">No clusters yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </main>
   </div>
