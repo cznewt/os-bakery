@@ -67,17 +67,6 @@ class Cluster(TimestampedModel):
     repeating them.
     """
 
-    class Kind(models.TextChoices):
-        KUBERNETES = "kubernetes", _("Kubernetes")
-        DOCKER_SWARM = "docker_swarm", _("Docker Swarm")
-        SALT_FLEET = "salt_fleet", _("Salt Fleet")
-        HOME_ASSISTANT = "home_assistant", _("Home Assistant")
-        BATOCERA_LAN = "batocera_lan", _("Batocera LAN")
-        ESPHOME_NETWORK = "esphome_network", _("ESPHome network")
-        ROBOTICS_SWARM = "robotics_swarm", _("Robotics / autopilot swarm")
-        VPN_MESH = "vpn_mesh", _("VPN mesh (ZeroTier / WireGuard / Tailscale)")
-        GENERIC = "generic", _("Generic")
-
     tenant = models.ForeignKey(
         Tenant,
         on_delete=models.CASCADE,
@@ -88,7 +77,6 @@ class Cluster(TimestampedModel):
         help_text="Unique within the tenant — e.g. `prg-kube`, `home-iot`.",
     )
     name = models.CharField(max_length=120)
-    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.GENERIC)
     parameters = models.JSONField(
         default=dict,
         blank=True,

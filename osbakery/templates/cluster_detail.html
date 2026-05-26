@@ -21,7 +21,6 @@
       <div>
         <div class="flex items-center gap-3">
           <h1 class="text-2xl font-semibold">{{ cluster.name }}</h1>
-          <span class="text-[10px] uppercase font-medium px-2 py-0.5 rounded bg-stone-100 text-stone-600">{{ cluster.get_kind_display }}</span>
         </div>
         <p class="text-stone-500 text-sm mt-1 font-mono">{{ cluster.tenant.slug }}/{{ cluster.slug }}</p>
         {% if cluster.description %}<p class="text-stone-500 text-sm mt-2">{{ cluster.description }}</p>{% endif %}
@@ -87,12 +86,6 @@
             <div>
               <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Slug</label>
               <input type="text" name="slug" value="{{ cluster.slug }}" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
-            </div>
-            <div>
-              <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Kind</label>
-              <select name="kind" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
-                {% for value, label in kinds %}<option value="{{ value }}" {% if value == cluster.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}
-              </select>
             </div>
             <div>
               <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Tags <span class="normal-case text-stone-400">(comma-separated)</span></label>

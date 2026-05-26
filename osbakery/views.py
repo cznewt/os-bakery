@@ -587,7 +587,6 @@ def clusters(request: HttpRequest) -> HttpResponse:
     return render(request, "clusters.html", {
         "clusters": cluster_qs,
         "tenants": Tenant.objects.filter(is_active=True).order_by("name"),
-        "kinds": Cluster.Kind.choices,
     })
 
 
@@ -652,7 +651,6 @@ def cluster_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "param_count": len(params) if isinstance(params, dict) else 0,
         "baked": baked,
         "builds": builds,
-        "kinds": Cluster.Kind.choices,
         "tags_str": ", ".join(cluster.tags or []),
     })
 
@@ -667,7 +665,6 @@ def cluster_create(request: HttpRequest) -> HttpResponse:
     name = (request.POST.get("name") or "").strip()
     slug = (request.POST.get("slug") or "").strip() or slugify(name)
     tenant_id = request.POST.get("tenant")
-    kind = (request.POST.get("kind") or "").strip() or Cluster.Kind.GENERIC
     raw = request.POST.get("metadata_yaml", "")
     if not name or not tenant_id:
         messages.error(request, "Name and tenant are required.")
@@ -685,7 +682,7 @@ def cluster_create(request: HttpRequest) -> HttpResponse:
     tenant = get_object_or_404(Tenant, pk=tenant_id)
     tags = [t.strip() for t in (request.POST.get("tags") or "").split(",") if t.strip()]
     cluster = Cluster.objects.create(
-        tenant=tenant, slug=slug, name=name, kind=kind, parameters=parsed,
+        tenant=tenant, slug=slug, name=name, parameters=parsed,
         tags=tags, notes=request.POST.get("notes", ""),
     )
     messages.success(request, f"Created cluster {cluster.name}.")
@@ -694,7 +691,7 @@ def cluster_create(request: HttpRequest) -> HttpResponse:
 
 @require_POST
 def cluster_edit(request: HttpRequest, slug: str) -> HttpResponse:
-    """Update all editable cluster params: slug, name, kind, tags, notes,
+    """Update all editable cluster params: slug, name, tags, notes,
     active, and the metadata (YAML)."""
     import yaml
     from django.utils.text import slugify
@@ -702,7 +699,6 @@ def cluster_edit(request: HttpRequest, slug: str) -> HttpResponse:
     cluster = get_object_or_404(Cluster, slug=slug)
     name = (request.POST.get("name") or "").strip()
     new_slug = slugify((request.POST.get("slug") or "").strip()) or cluster.slug
-    kind = (request.POST.get("kind") or "").strip() or cluster.kind
     notes = request.POST.get("notes", "")
     is_active = request.POST.get("is_active") == "on"
     tags = [t.strip() for t in (request.POST.get("tags") or "").split(",") if t.strip()]
@@ -723,13 +719,12 @@ def cluster_edit(request: HttpRequest, slug: str) -> HttpResponse:
     if name:
         cluster.name = name
     cluster.slug = new_slug
-    cluster.kind = kind
     cluster.notes = notes
     cluster.is_active = is_active
     cluster.tags = tags
     cluster.parameters = parsed
     cluster.save(update_fields=[
-        "name", "slug", "kind", "notes", "is_active", "tags",
+        "name", "slug", "notes", "is_active", "tags",
         "parameters", "updated_at",
     ])
     messages.success(request, f"Saved {cluster.name} ({len(parsed)} metadata keys).")
@@ -1148,8 +1143,6 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
             "name": c.name,
             "tenant_slug": c.tenant.slug,
             "tenant_name": c.tenant.name,
-            "kind": c.get_kind_display(),
-            "kind_key": c.kind,
         }
         for c in clusters_qs
     ]
@@ -1276,7 +1269,6 @@ def nodes(request: HttpRequest) -> HttpResponse:
             "hostname": n.minion_id,
             "cluster": f"{n.cluster.tenant.slug}/{n.cluster.slug}",
             "cluster_slug": n.cluster.slug,
-            "cluster_kind": n.cluster.get_kind_display(),
             "preset": n.preset.slug,
             "os": n.preset.operating_system.slug,
             "target": n.hardware_target.slug,

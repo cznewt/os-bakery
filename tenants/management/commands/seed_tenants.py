@@ -80,7 +80,6 @@ TENANTS: list[dict[str, Any]] = [
             {
                 "slug": "gedu-vpn",
                 "name": "GeekEdu PRG infrastructure mesh",
-                "kind": Cluster.Kind.VPN_MESH,
                 "notes": "ZeroTier infra mesh for Prague datacenter — "
                          "`a57fdfffb0c77a31 craftama-infrastructure`. "
                          "Synced from deploy-gedu-prg in "
@@ -105,7 +104,6 @@ TENANTS: list[dict[str, Any]] = [
             {
                 "slug": "gedu-roam",
                 "name": "GeekEdu roaming mesh",
-                "kind": Cluster.Kind.VPN_MESH,
                 "notes": "ZeroTier mesh for laptops + handhelds — "
                          "`a57fdfffb03ef7e9 nxlabs-geekedu`. "
                          "Synced from deploy-gedu-roam.",
@@ -127,7 +125,6 @@ TENANTS: list[dict[str, Any]] = [
             {
                 "slug": "gedu-prg-kube",
                 "name": "GeekEdu Prague Kubernetes",
-                "kind": Cluster.Kind.KUBERNETES,
                 "notes": "Newt-Prague k8s 1.34 + flannel. Synced from "
                          "deploy-gedu-prg.",
                 "parameters": {
@@ -147,7 +144,6 @@ TENANTS: list[dict[str, Any]] = [
             {
                 "slug": "gedu-arcade",
                 "name": "GeekEdu arcade fleet",
-                "kind": Cluster.Kind.BATOCERA_LAN,
                 "notes": "Arcade + roaming Batocera devices for GeekEdu "
                          "classrooms. Synced from deploy-gedu (batocera "
                          "repos + Wi-Fi + SSH keys) + alloy observability.",
@@ -228,7 +224,6 @@ class Command(BaseCommand):
                         tenant=t, slug=cspec["slug"],
                         defaults={
                             "name": cspec["name"],
-                            "kind": cspec.get("kind", Cluster.Kind.GENERIC),
                             "parameters": cspec.get("parameters", {}),
                             "notes": cspec.get("notes", ""),
                             "is_active": cspec.get("is_active", True),
@@ -240,7 +235,7 @@ class Command(BaseCommand):
                         updated_clusters += 1
                     self.stdout.write(
                         f"    [{'created' if c_created else 'updated'}] "
-                        f"Cluster: {c.tenant.slug}/{c.slug} ({c.kind})"
+                        f"Cluster: {c.tenant.slug}/{c.slug}"
                     )
 
         self.stdout.write(self.style.SUCCESS(

@@ -19,9 +19,9 @@ from tenants.models import Cluster, Node, Tenant
 TENANT = {"slug": "test", "name": "Test Lab",
           "description": "Throwaway tenant for testing bake configurations."}
 
-# (slug, name, kind, parameters, tags)
+# (slug, name, parameters, tags)
 CLUSTERS = [
-    ("test-arcade", "Test Arcade LAN", Cluster.Kind.BATOCERA_LAN, {
+    ("test-arcade", "Test Arcade LAN", {
         "salt": {"master": "salt.test.lan"},
         "alloy": {"endpoint": "https://alloy.test.lan/loki/api/v1/push"},
         "batocera": {"boot_to_arcade": True,
@@ -29,29 +29,29 @@ CLUSTERS = [
                      "screen_share": {"enabled": True}},
         "zerotier": {"network": "8056c2e21c000001"},
     }, ["test", "retro"]),
-    ("test-kube", "Test Kubernetes", Cluster.Kind.KUBERNETES, {
+    ("test-kube", "Test Kubernetes", {
         "salt": {"master": "salt.test.lan"},
         "linux": {"timezone": "Europe/Prague"},
         "kubernetes": {"api_endpoint": "https://kube.test.lan:6443",
                        "kubeadm_token": "abcdef.0123456789abcdef",
                        "pod_cidr": "10.244.0.0/16"},
     }, ["test", "infra"]),
-    ("test-fleet", "Test Salt Fleet", Cluster.Kind.SALT_FLEET, {
+    ("test-fleet", "Test Salt Fleet", {
         "salt": {"master": "salt.test.lan", "mine_interval": 60},
         "linux": {"timezone": "Europe/Prague",
                   "packages": ["htop", "vim", "curl"]},
     }, ["test", "infra"]),
-    ("test-home", "Test Home Assistant", Cluster.Kind.HOME_ASSISTANT, {
+    ("test-home", "Test Home Assistant", {
         "mqtt": {"broker": "mqtt.test.lan", "port": 1883},
         "network": {"wifi_country": "CZ"},
         "linux": {"timezone": "Europe/Prague"},
     }, ["test", "iot"]),
-    ("test-vpn", "Test VPN Mesh", Cluster.Kind.VPN_MESH, {
+    ("test-vpn", "Test VPN Mesh", {
         "vpn": {"kind": "zerotier"},
         "zerotier": {"network": "8056c2e21c000001"},
         "dns": {"search": "test.lan", "servers": ["10.0.0.1"]},
     }, ["test", "net"]),
-    ("test-esp", "Test ESPHome Network", Cluster.Kind.ESPHOME_NETWORK, {
+    ("test-esp", "Test ESPHome Network", {
         "wifi": {"ssid": "test-iot", "domain": ".test.lan"},
         "api": {"encryption": True},
         "ota": {"enabled": True},
@@ -88,19 +88,17 @@ class Command(BaseCommand):
         )
         self.stdout.write(f"{'created' if created else 'exists'}: tenant {tenant.slug}")
 
-        for slug, name, kind, params, tags in CLUSTERS:
+        for slug, name, params, tags in CLUSTERS:
             c, made = Cluster.objects.get_or_create(
                 tenant=tenant, slug=slug,
-                defaults={"name": name, "kind": kind,
-                          "parameters": params, "tags": tags},
+                defaults={"name": name, "parameters": params, "tags": tags},
             )
             if not made:
                 # Refresh params/tags so re-running keeps them current.
-                c.name, c.kind, c.parameters, c.tags = name, kind, params, tags
-                c.save(update_fields=["name", "kind", "parameters", "tags"])
+                c.name, c.parameters, c.tags = name, params, tags
+                c.save(update_fields=["name", "parameters", "tags"])
             self.stdout.write(
-                f"  {'created' if made else 'updated'}: {tenant.slug}/{c.slug} "
-                f"({kind})"
+                f"  {'created' if made else 'updated'}: {tenant.slug}/{c.slug}"
             )
 
         # Nodes — the units we bake images onto.

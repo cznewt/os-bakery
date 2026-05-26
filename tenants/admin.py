@@ -14,8 +14,8 @@ class TenantAdmin(admin.ModelAdmin):
 
 @admin.register(Cluster)
 class ClusterAdmin(admin.ModelAdmin):
-    list_display = ("slug", "name", "tenant", "kind", "is_active", "created_at")
-    list_filter = ("kind", "is_active", "tenant")
+    list_display = ("slug", "name", "tenant", "is_active", "created_at")
+    list_filter = ("is_active", "tenant")
     search_fields = ("slug", "name", "tenant__slug")
     autocomplete_fields = ("tenant",)
 

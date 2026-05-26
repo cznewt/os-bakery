@@ -105,11 +105,14 @@
               <td class="px-4 py-3 font-mono text-emerald-700">{{ c.baked }}</td>
               <td class="px-4 py-3 font-mono text-stone-500">{{ c.builds }}</td>
               <td class="px-4 py-3">
-                <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
-                  <a href="/clusters/{{ c.slug }}/" class="px-2 py-1 text-stone-700 hover:bg-stone-100">ⓘ Metadata</a>
-                  <a href="/baked/?cluster={{ c.slug }}" class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100">↳ Baked</a>
-                  <a href="/nodes/?cluster={{ c.slug }}" class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100">⬡ Nodes</a>
-                </span>
+                <details class="relative inline-block text-xs">
+                  <summary class="cursor-pointer select-none font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 inline-flex items-center gap-1">Actions ▾</summary>
+                  <div class="absolute right-0 mt-1 w-44 bg-white border border-stone-200 rounded-lg shadow-lg z-20 py-1 flex flex-col">
+                    <a href="/clusters/{{ c.slug }}/" class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">ⓘ Metadata</a>
+                    <a href="/nodes/?cluster={{ c.slug }}" class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">⬡ Nodes</a>
+                    <a href="/baked/?cluster={{ c.slug }}" class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">↳ Baked images</a>
+                  </div>
+                </details>
               </td>
             </tr>
             {% empty %}
