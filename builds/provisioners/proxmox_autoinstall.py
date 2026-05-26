@@ -52,9 +52,9 @@ def _render_answer(opts: dict) -> str:
     g.append(f"fqdn = {_toml_str(fqdn)}")
     g.append(f"mailto = {_toml_str(opts.get('email') or 'admin@' + domain)}")
     g.append(f"timezone = {_toml_str(opts.get('timezone') or 'UTC')}")
-    g.append(f"root_password = {_toml_str(opts.get('root_password') or 'changeme')}")
+    g.append(f"root-password = {_toml_str(opts.get('root_password') or 'changeme')}")
     if keys:
-        g.append("root_ssh_keys = [" + ", ".join(_toml_str(k) for k in keys) + "]")
+        g.append("root-ssh-keys = [" + ", ".join(_toml_str(k) for k in keys) + "]")
 
     # Network: static when a CIDR is given, else DHCP (robust default).
     static = (opts.get("static_ip") or "").strip()
@@ -72,7 +72,7 @@ def _render_answer(opts: dict) -> str:
     disk = ["[disk-setup]",
             f"filesystem = {_toml_str(opts.get('filesystem') or 'ext4')}"]
     target_disk = (opts.get("target_disk") or "").strip()
-    disk.append("disk_list = [" + _toml_str(target_disk or "sda") + "]")
+    disk.append("disk-list = [" + _toml_str(target_disk or "sda") + "]")
 
     return "\n".join(g + [""] + net + [""] + disk) + "\n"
 
