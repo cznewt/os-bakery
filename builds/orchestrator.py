@@ -340,22 +340,33 @@ def _sha256(path: Path) -> tuple[str, int]:
 
 
 def _artifact_basename(build: BuildRequest, packed: Path) -> str:
-    """A human-friendly artifact filename: <node|label>-<YYYYmmdd-HHMM>.<ext>.
+    """A human-friendly artifact filename: <node|label>-<baseimage>-<date>.<ext>.
 
-    The node (when baking one) gives the most meaningful name; otherwise the
-    build label, else recipe+target. A timestamp disambiguates re-bakes.
+    The node (when baking one) names it; otherwise the build label, else
+    recipe+target. <baseimage> is the upstream image (os-version[-variant]) it
+    was baked from; <date> disambiguates re-bakes.
     """
     from django.utils.text import slugify
 
     ext = packed.name.split(".", 1)[1] if "." in packed.name else "img.xz"
     if build.node_id:
-        base = build.node.slug
+        name = build.node.slug
     elif build.label:
-        base = build.label
+        name = build.label
     else:
-        base = f"{build.recipe_version.recipe.slug}-{build.hardware_target.slug}"
-    ts = timezone.localtime(build.queued_at or timezone.now()).strftime("%Y%m%d-%H%M")
-    return f"{slugify(base)}-{ts}.{ext}"
+        name = f"{build.recipe_version.recipe.slug}-{build.hardware_target.slug}"
+
+    up = build.upstream_image
+    rel = up.release if up else None
+    parts = []
+    if rel:
+        parts += [rel.operating_system.slug, rel.version]
+    if up and up.variant:
+        parts.append(up.variant)
+    baseimage = slugify("-".join(str(p) for p in parts)) or "image"
+
+    date = timezone.localtime(build.queued_at or timezone.now()).strftime("%Y%m%d")
+    return f"{slugify(name)}-{baseimage}-{date}.{ext}"
 
 
 def _publish(ctx: BuildContext, packed: Path) -> Artifact:
