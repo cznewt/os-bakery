@@ -340,11 +340,11 @@ def _sha256(path: Path) -> tuple[str, int]:
 
 
 def _artifact_basename(build: BuildRequest, packed: Path) -> str:
-    """A human-friendly artifact filename: <node|label>-<baseimage>-<date>.<ext>.
+    """Artifact filename: <node|label>-<baseimage>-<YYYYmmdd-HHMM>.<ext>.
 
     The node (when baking one) names it; otherwise the build label, else
     recipe+target. <baseimage> is the upstream image (os-version[-variant]) it
-    was baked from; <date> disambiguates re-bakes.
+    was baked from; the date+time stamp lets several bakes share one day.
     """
     from django.utils.text import slugify
 
@@ -365,8 +365,8 @@ def _artifact_basename(build: BuildRequest, packed: Path) -> str:
         parts.append(up.variant)
     baseimage = slugify("-".join(str(p) for p in parts)) or "image"
 
-    date = timezone.localtime(build.queued_at or timezone.now()).strftime("%Y%m%d")
-    return f"{slugify(name)}-{baseimage}-{date}.{ext}"
+    stamp = timezone.localtime(build.queued_at or timezone.now()).strftime("%Y%m%d-%H%M")
+    return f"{slugify(name)}-{baseimage}-{stamp}.{ext}"
 
 
 def _publish(ctx: BuildContext, packed: Path) -> Artifact:
