@@ -29,7 +29,67 @@
       </nav>
     </header>
 
-    <main class="pb-24">
+    <main class="pb-24 space-y-6">
+      {% if messages %}
+      <div class="space-y-2">
+        {% for m in messages %}
+        <div class="rounded-md border px-3 py-2 text-sm {% if m.tags == 'error' %}border-red-300 bg-red-50 text-red-800{% else %}border-emerald-300 bg-emerald-50 text-emerald-800{% endif %}">{{ m.message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <details class="bg-white border border-stone-200 rounded-xl shadow-sm">
+        <summary class="px-5 py-3 cursor-pointer font-medium hover:bg-stone-50 rounded-xl">+ New node</summary>
+        <form method="post" action="{% url 'node_create' %}" class="px-5 pb-5 pt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {% csrf_token %}
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Name</label>
+            <input type="text" name="name" required class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Slug <span class="normal-case text-stone-400">(optional)</span></label>
+            <input type="text" name="slug" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Cluster</label>
+            <select name="cluster" required class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+              {% for c in clusters %}<option value="{{ c.id }}">{{ c.tenant.slug }}/{{ c.slug }} — {{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Hostname <span class="normal-case text-stone-400">(defaults to slug)</span></label>
+            <input type="text" name="hostname" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Preset</label>
+            <select name="preset" required class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+              {% for p in presets %}<option value="{{ p.id }}">{{ p.slug }} ({{ p.operating_system.slug }})</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Hardware target</label>
+            <select name="hardware_target" required class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+              {% for t in targets %}<option value="{{ t.id }}">{{ t.slug }} ({{ t.architecture.slug }})</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Tags <span class="normal-case text-stone-400">(comma-separated)</span></label>
+            <input type="text" name="tags" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Notes</label>
+            <input type="text" name="notes" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Node parameters (YAML, optional)</label>
+            <textarea name="parameters_yaml" rows="5" spellcheck="false" placeholder="batocera:&#10;  boot_to_arcade: true" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-xs"></textarea>
+          </div>
+          <div class="md:col-span-2">
+            <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">Create node</button>
+          </div>
+        </form>
+      </details>
+
       {% if f_cluster %}<a href="/nodes/" class="inline-block mb-4 text-xs font-mono text-sky-700 hover:underline">✕ clear filter</a>{% endif %}
       <div class="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
         <table class="w-full text-sm">

@@ -39,10 +39,67 @@
     {% endif %}
 
     <main class="pb-24 space-y-6">
-      <form method="post" action="/nodes/{{ node.id }}/bake/">
-        {% csrf_token %}
-        <button type="submit" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↻ Bake this node</button>
-      </form>
+      <div class="flex items-center gap-3">
+        <form method="post" action="/nodes/{{ node.id }}/bake/">
+          {% csrf_token %}
+          <button type="submit" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↻ Bake this node</button>
+        </form>
+        <form method="post" action="/nodes/{{ node.id }}/delete/" onsubmit="return confirm('Delete node {{ node.slug }}? Its baked images keep but lose the node link.');">
+          {% csrf_token %}
+          <button type="submit" class="text-sm font-medium text-red-700 border border-red-200 rounded-lg px-4 py-2 hover:bg-red-50">✕ Delete</button>
+        </form>
+      </div>
+
+      <details class="bg-white border border-stone-200 rounded-xl shadow-sm">
+        <summary class="px-5 py-3 cursor-pointer font-medium hover:bg-stone-50 rounded-xl">✎ Edit node</summary>
+        <form method="post" action="/nodes/{{ node.id }}/edit/" class="px-5 pb-5 pt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {% csrf_token %}
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Name</label>
+            <input type="text" name="name" value="{{ node.name }}" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Slug</label>
+            <input type="text" name="slug" value="{{ node.slug }}" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Cluster</label>
+            <select name="cluster" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+              {% for c in clusters %}<option value="{{ c.id }}" {% if c.id == node.cluster_id %}selected{% endif %}>{{ c.tenant.slug }}/{{ c.slug }} — {{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Hostname</label>
+            <input type="text" name="hostname" value="{{ node.hostname }}" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Preset</label>
+            <select name="preset" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+              {% for p in presets %}<option value="{{ p.id }}" {% if p.id == node.preset_id %}selected{% endif %}>{{ p.slug }} ({{ p.operating_system.slug }})</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Hardware target</label>
+            <select name="hardware_target" class="w-full border border-stone-300 rounded px-3 py-2 text-sm">
+              {% for t in targets %}<option value="{{ t.id }}" {% if t.id == node.hardware_target_id %}selected{% endif %}>{{ t.slug }} ({{ t.architecture.slug }})</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Tags <span class="normal-case text-stone-400">(comma-separated)</span></label>
+            <input type="text" name="tags" value="{{ tags_csv }}" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-sm">
+          </div>
+          <div class="flex items-end gap-2">
+            <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" {% if node.is_active %}checked{% endif %}> active</label>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Node parameters (YAML)</label>
+            <textarea name="parameters_yaml" rows="6" spellcheck="false" class="w-full border border-stone-300 rounded px-3 py-2 font-mono text-xs">{{ node_params_yaml }}</textarea>
+          </div>
+          <div class="md:col-span-2">
+            <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">Save node</button>
+          </div>
+        </form>
+      </details>
 
       <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">

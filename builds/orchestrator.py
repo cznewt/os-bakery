@@ -330,10 +330,32 @@ def _sha256(path: Path) -> tuple[str, int]:
     return h.hexdigest(), size
 
 
+def _artifact_basename(build: BuildRequest, packed: Path) -> str:
+    """A human-friendly artifact filename: <node|label>-<YYYYmmdd-HHMM>.<ext>.
+
+    The node (when baking one) gives the most meaningful name; otherwise the
+    build label, else recipe+target. A timestamp disambiguates re-bakes.
+    """
+    from django.utils.text import slugify
+
+    ext = packed.name.split(".", 1)[1] if "." in packed.name else "img.xz"
+    if build.node_id:
+        base = build.node.slug
+    elif build.label:
+        base = build.label
+    else:
+        base = f"{build.recipe_version.recipe.slug}-{build.hardware_target.slug}"
+    ts = timezone.localtime(build.queued_at or timezone.now()).strftime("%Y%m%d-%H%M")
+    return f"{slugify(base)}-{ts}.{ext}"
+
+
 def _publish(ctx: BuildContext, packed: Path) -> Artifact:
     storage = storages["artifacts"]
     digest, size = _sha256(packed)
-    target_key = f"{ctx.build.id}/{packed.name}"
+    friendly = _artifact_basename(ctx.build, packed)
+    # Keep the build-id directory prefix so keys never collide; the basename is
+    # the friendly name, which is what a direct-S3 download saves as.
+    target_key = f"{ctx.build.id}/{friendly}"
 
     # Re-bake case: drop the previous Artifact + cascading DownloadTokens
     # (Artifact is OneToOne to BuildRequest) before publishing the new one.
@@ -349,7 +371,7 @@ def _publish(ctx: BuildContext, packed: Path) -> Artifact:
     artifact = Artifact.objects.create(
         build=ctx.build,
         storage_key=target_key,
-        filename=packed.name,
+        filename=friendly,
         format=Artifact.Format.IMG_XZ,
         size_bytes=size,
         sha256=digest,

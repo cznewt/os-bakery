@@ -745,6 +745,95 @@ def cluster_delete(request: HttpRequest, slug: str) -> HttpResponse:
     return redirect("clusters")
 
 
+def _parse_node_params(raw: str):
+    """Parse a node's parameters YAML; returns (dict, error_message)."""
+    import yaml
+    try:
+        parsed = yaml.safe_load(raw) or {}
+        if not isinstance(parsed, dict):
+            raise ValueError("parameters must be a mapping (key: value)")
+        return parsed, None
+    except (yaml.YAMLError, ValueError) as exc:
+        return None, str(exc)
+
+
+@require_POST
+def node_create(request: HttpRequest) -> HttpResponse:
+    """Create a node from the form on /nodes/."""
+    from django.utils.text import slugify
+
+    cluster_id = request.POST.get("cluster")
+    preset_id = request.POST.get("preset")
+    target_id = request.POST.get("hardware_target")
+    name = (request.POST.get("name") or "").strip()
+    slug = slugify((request.POST.get("slug") or "").strip() or name)
+    if not (name and cluster_id and preset_id and target_id):
+        messages.error(request, "Name, cluster, preset and hardware target are required.")
+        return redirect("nodes")
+    parsed, err = _parse_node_params(request.POST.get("parameters_yaml", ""))
+    if err:
+        messages.error(request, f"Invalid YAML — not created: {err}")
+        return redirect("nodes")
+    cluster = get_object_or_404(Cluster, pk=cluster_id)
+    if Node.objects.filter(cluster=cluster, slug=slug).exists():
+        messages.error(request, f"Node '{slug}' already exists in {cluster.slug}.")
+        return redirect("nodes")
+    tags = [t.strip() for t in (request.POST.get("tags") or "").split(",") if t.strip()]
+    node = Node.objects.create(
+        cluster=cluster, slug=slug, name=name,
+        hostname=(request.POST.get("hostname") or "").strip(),
+        preset_id=preset_id, hardware_target_id=target_id,
+        parameters=parsed, tags=tags, notes=request.POST.get("notes", ""),
+    )
+    messages.success(request, f"Created node {node.slug}.")
+    return redirect("node_detail", pk=node.pk)
+
+
+@require_POST
+def node_edit(request: HttpRequest, pk: int) -> HttpResponse:
+    """Update a node's editable fields + parameters (YAML)."""
+    from django.utils.text import slugify
+
+    node = get_object_or_404(Node, pk=pk)
+    cluster_id = request.POST.get("cluster") or node.cluster_id
+    new_slug = slugify((request.POST.get("slug") or "").strip()) or node.slug
+    name = (request.POST.get("name") or "").strip()
+    parsed, err = _parse_node_params(request.POST.get("parameters_yaml", ""))
+    if err:
+        messages.error(request, f"Invalid YAML — not saved: {err}")
+        return redirect("node_detail", pk=pk)
+    if (new_slug != node.slug or str(cluster_id) != str(node.cluster_id)) and \
+            Node.objects.filter(cluster_id=cluster_id, slug=new_slug).exclude(pk=node.pk).exists():
+        messages.error(request, f"Node '{new_slug}' already exists in that cluster.")
+        return redirect("node_detail", pk=pk)
+    if name:
+        node.name = name
+    node.slug = new_slug
+    node.cluster_id = cluster_id
+    node.hostname = (request.POST.get("hostname") or "").strip()
+    if request.POST.get("preset"):
+        node.preset_id = request.POST.get("preset")
+    if request.POST.get("hardware_target"):
+        node.hardware_target_id = request.POST.get("hardware_target")
+    node.is_active = request.POST.get("is_active") == "on"
+    node.tags = [t.strip() for t in (request.POST.get("tags") or "").split(",") if t.strip()]
+    node.notes = request.POST.get("notes", "")
+    node.parameters = parsed
+    node.save()
+    messages.success(request, f"Saved node {node.slug}.")
+    return redirect("node_detail", pk=node.pk)
+
+
+@require_POST
+def node_delete(request: HttpRequest, pk: int) -> HttpResponse:
+    """Remove a node. Its builds keep (FK is SET_NULL) but lose the link."""
+    node = get_object_or_404(Node, pk=pk)
+    slug = node.slug
+    node.delete()
+    messages.success(request, f"Removed node {slug}.")
+    return redirect("nodes")
+
+
 @require_POST
 def drop_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     """Drop a base image's local sync — delete the mirrored blob from the
@@ -1153,6 +1242,17 @@ def doc_page(request: HttpRequest, slug: str) -> HttpResponse:
 # Nodes — the units we bake images onto (cluster + preset + hardware)
 # ---------------------------------------------------------------------------
 
+def _node_form_options() -> dict:
+    """Select options for the node create/edit forms."""
+    return {
+        "clusters": Cluster.objects.filter(is_active=True)
+                    .select_related("tenant").order_by("tenant__name", "name"),
+        "presets": Recipe.objects.select_related("operating_system").order_by("slug"),
+        "targets": HardwareTarget.objects.filter(is_active=True)
+                   .select_related("architecture").order_by("slug"),
+    }
+
+
 def nodes(request: HttpRequest) -> HttpResponse:
     """All nodes, grouped by cluster, with their preset + target + last bake."""
     f_cluster = request.GET.get("cluster") or ""
@@ -1186,6 +1286,7 @@ def nodes(request: HttpRequest) -> HttpResponse:
         })
     return render(request, "nodes.html", {
         "rows": rows, "total": len(rows), "f_cluster": f_cluster,
+        **_node_form_options(),
     })
 
 
@@ -1216,7 +1317,10 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "provisioner_yaml": provisioner_yaml,
         "cluster_yaml": cluster_yaml,
         "node_yaml": node_yaml,
+        "node_params_yaml": node_yaml,
+        "tags_csv": ", ".join(node.tags or []),
         "builds": builds,
+        **_node_form_options(),
     })
 
 
