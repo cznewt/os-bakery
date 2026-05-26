@@ -59,8 +59,9 @@
           <tbody class="divide-y divide-stone-100">
             {% for r in rows %}
             <tr>
-              <td class="px-6 py-3 font-mono whitespace-nowrap">{{ r.recipe }}
-                {% if r.label %}<span class="text-stone-400 ml-1">{{ r.label }}</span>{% endif %}
+              <td class="px-6 py-3 font-mono whitespace-nowrap">
+                <div>{{ r.recipe }}</div>
+                {% if r.label %}<div class="text-xs text-stone-400">{{ r.label }}</div>{% endif %}
               </td>
               <td class="px-4 py-3 font-mono text-stone-600">{{ r.os }}</td>
               <td class="px-4 py-3 font-mono">{{ r.target }}</td>
