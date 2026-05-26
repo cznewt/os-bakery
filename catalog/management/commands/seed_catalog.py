@@ -245,6 +245,19 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("vm-qemu", "QEMU / KVM virtual machine", "amd64", "uefi"),
     TargetSeed("vm-hyperv", "Microsoft Hyper-V Gen2", "amd64", "uefi"),
     TargetSeed("vm-virtualbox", "Oracle VirtualBox", "amd64", "bios"),
+    TargetSeed("vm-vmware", "VMware ESXi / vSphere / Workstation", "amd64", "uefi",
+               notes="HAOS OVA appliance for VMware."),
+    # Home Assistant OS appliance boards (per the alternative install page).
+    TargetSeed("ha-yellow", "Home Assistant Yellow", "arm64", "uboot",
+               soc="Raspberry Pi CM4", notes="HA Yellow (CM4 carrier)."),
+    TargetSeed("ha-green", "Home Assistant Green", "arm64", "uboot",
+               soc="Rockchip RK3566", notes="HA Green turnkey appliance."),
+    TargetSeed("odroid-n2", "Hardkernel ODROID-N2/N2+", "arm64", "uboot",
+               soc="Amlogic S922X"),
+    TargetSeed("odroid-m1", "Hardkernel ODROID-M1", "arm64", "uboot",
+               soc="Rockchip RK3568"),
+    TargetSeed("odroid-c4", "Hardkernel ODROID-C4", "arm64", "uboot",
+               soc="Amlogic S905X3"),
     TargetSeed("beaglebone-black", "BeagleBone Black", "armhf", "uboot",
                soc="TI AM335x",
                notes="1 GHz Cortex-A8. Boots from eMMC / SD. armhf only.",
@@ -459,7 +472,7 @@ RELEASES: list[ReleaseSeed] = [
     ReleaseSeed("raspios", "2026-04-21", "stable", codename="Trixie",
                 is_default=True),
     # Home Assistant OS — only the current major is supported.
-    ReleaseSeed("haos", "17.1", "stable", is_default=True),
+    ReleaseSeed("haos", "17.3", "stable", is_default=True),
     # Curated desktop distros.
     ReleaseSeed("omarchy", "2.0", "stable", is_default=True),
     ReleaseSeed("popos", "22.04", "lts", codename="Jammy", is_default=True),
@@ -602,11 +615,17 @@ _RASPIOS_LITE = (
 )
 
 # HAOS is versioned per release; one URL template covers every (version,
-# platform) combo.
+# platform) combo. Boards ship a flashable .img.xz; the VM/appliance images
+# ship per-hypervisor (qcow2.xz / ova / vdi.zip / vhdx.zip).
 _HAOS = (
     "https://github.com/home-assistant/operating-system/releases/download/"
     "{version}/haos_{platform}-{version}.img.xz"
 )
+_HAOS_VM = (
+    "https://github.com/home-assistant/operating-system/releases/download/"
+    "{version}/haos_ova-{version}.{ext}"
+)
+HAOS_VERSION = "17.3"
 
 
 def _images() -> list[ImageSeed]:
@@ -772,20 +791,38 @@ def _images() -> list[ImageSeed]:
             rows.append(ImageSeed("raspios", date, "stable", target,
                                   "lite", lite_url, "img.xz"))
 
-    # HAOS — per-target appliance image, no variant. Only the current
-    # supported major is seeded; older majors (14/15/16) are EOL.
-    haos_targets = [
+    # HAOS — per-board appliance image (flashable .img.xz). One row per device
+    # the project ships an image for (see the alternative-install page).
+    haos_boards = [
+        ("pc-amd64", "generic-x86-64"),
+        ("generic-arm64", "generic-aarch64"),
+        ("rpi3", "rpi3-64"),
         ("rpi4", "rpi4-64"),
         ("rpi5", "rpi5-64"),
-        ("pc-amd64", "generic-x86-64"),
+        ("ha-yellow", "yellow"),
+        ("ha-green", "green"),
+        ("odroid-n2", "odroid-n2"),
+        ("odroid-m1", "odroid-m1"),
+        ("odroid-c4", "odroid-c4"),
     ]
-    for version in ("17.1",):
-        for target, platform in haos_targets:
-            rows.append(ImageSeed(
-                "haos", version, "stable", target, "",
-                _HAOS.format(version=version, platform=platform),
-                "img.xz",
-            ))
+    for target, platform in haos_boards:
+        rows.append(ImageSeed(
+            "haos", HAOS_VERSION, "stable", target, "",
+            _HAOS.format(version=HAOS_VERSION, platform=platform),
+            "img.xz",
+        ))
+    # HAOS — virtual-machine / hypervisor appliance images (alternative install).
+    haos_vms = [
+        ("vm-qemu", "qcow2.xz", "qcow2"),       # KVM / Proxmox / libvirt
+        ("vm-vmware", "ova", "ova"),            # VMware ESXi / vSphere
+        ("vm-virtualbox", "vdi.zip", "img.zip"),
+        ("vm-hyperv", "vhdx.zip", "img.zip"),
+    ]
+    for target, ext, fmt in haos_vms:
+        rows.append(ImageSeed(
+            "haos", HAOS_VERSION, "stable", target, "",
+            _HAOS_VM.format(version=HAOS_VERSION, ext=ext), fmt,
+        ))
 
     return rows
 
