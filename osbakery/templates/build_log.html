@@ -39,6 +39,41 @@
       <div class="rounded-md border border-red-300 bg-red-50 text-red-800 px-4 py-3 text-sm font-mono">{{ build.failure_reason }}</div>
       {% endif %}
 
+      {% if base %}
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">
+          <span>Base image
+            <span class="text-stone-400 font-mono text-xs">upstream image this artifact was baked from</span>
+          </span>
+          <span class="font-mono text-sm text-stone-700">{{ base.os }} {{ base.version }}{% if base.variant %} [{{ base.variant }}]{% endif %}</span>
+        </div>
+        <dl class="p-5 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Version</dt>
+            <dd class="font-mono">{{ base.version }}{% if base.codename %} <span class="text-stone-400">({{ base.codename }})</span>{% endif %}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Channel</dt>
+            <dd>{{ base.channel }}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Variant</dt>
+            <dd class="font-mono">{{ base.variant|default:"—" }}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Released</dt>
+            <dd class="font-mono">{{ base.released_on|date:"Y-m-d"|default:"—" }}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">End of life</dt>
+            <dd class="font-mono">{{ base.eol_on|date:"Y-m-d"|default:"—" }}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Format</dt>
+            <dd class="font-mono">{{ base.format }}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Upstream size</dt>
+            <dd class="font-mono">{% if base.size_bytes %}{{ base.size_bytes|filesizeformat }}{% else %}—{% endif %}</dd></div>
+          <div><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Synced</dt>
+            <dd class="font-mono">{{ base.synced_at|date:"Y-m-d H:i"|default:"—" }}</dd></div>
+          <div class="col-span-2 md:col-span-3"><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">Source</dt>
+            <dd class="font-mono text-xs break-all">{% if base.source_url %}<a href="{{ base.source_url }}" class="text-sky-700 hover:underline">{{ base.source_url }}</a>{% else %}—{% endif %}</dd></div>
+          {% if base.checksum %}
+          <div class="col-span-2 md:col-span-3"><dt class="text-[10px] uppercase tracking-wider font-mono text-stone-400">SHA-256</dt>
+            <dd class="font-mono text-xs break-all text-stone-500">{{ base.checksum }}</dd></div>
+          {% endif %}
+        </dl>
+      </section>
+      {% endif %}
+
       {% if effective_yaml %}
       <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">

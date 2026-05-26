@@ -413,6 +413,7 @@ def baked_images(request: HttpRequest) -> HttpResponse:
         BuildRequest.objects.select_related(
             "recipe_version__recipe__operating_system",
             "hardware_target__architecture",
+            "upstream_image__release__operating_system",
             "cluster__tenant",
             "tenant",
             "artifact",
@@ -433,10 +434,26 @@ def baked_images(request: HttpRequest) -> HttpResponse:
     if f_status:
         builds = builds.filter(status=f_status)
 
+    def _fmt_duration(seconds: float | None) -> str:
+        if not seconds or seconds < 0:
+            return ""
+        s = int(seconds)
+        if s < 60:
+            return f"{s}s"
+        if s < 3600:
+            return f"{s // 60}m {s % 60}s"
+        return f"{s // 3600}h {(s % 3600) // 60}m"
+
     rows = []
     for b in builds:
         art = getattr(b, "artifact", None)
         tok = art.tokens.first() if art else None
+        up = b.upstream_image
+        rel = up.release if up else None
+        build_secs = (
+            (b.finished_at - b.started_at).total_seconds()
+            if b.started_at and b.finished_at else None
+        )
         rows.append({
             "id": b.id,
             "recipe": b.recipe_version.recipe.slug,
@@ -450,6 +467,18 @@ def baked_images(request: HttpRequest) -> HttpResponse:
             "filename": art.filename if art else None,
             "token": tok.token if tok else None,
             "queued_at": b.queued_at,
+            "finished_at": b.finished_at,
+            "build_time": _fmt_duration(build_secs),
+            # Base (upstream) image the artifact was baked from.
+            "base_version": rel.version if rel else None,
+            "base_codename": rel.codename if rel else "",
+            "base_released_on": rel.released_on if rel else None,
+            "base_channel": rel.get_channel_display() if rel else "",
+            "base_variant": up.variant if up else "",
+            "base_format": up.get_format_display() if up else "",
+            "base_size_bytes": up.size_bytes if up else 0,
+            "base_synced_at": up.last_synced_at if up else None,
+            "base_source_url": up.source_url if up else "",
         })
     context = {
         "rows": rows,
@@ -468,6 +497,7 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
         BuildRequest.objects.select_related(
             "recipe_version__recipe__operating_system",
             "hardware_target", "cluster__tenant", "artifact",
+            "upstream_image__release__operating_system",
         ).prefetch_related("events", "artifact__tokens"),
         pk=build_id,
     )
@@ -495,6 +525,27 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
     cluster_params = (build.cluster.parameters or {}) if build.cluster_id else {}
     cluster_yaml = (_yaml.safe_dump(cluster_params, sort_keys=False)
                     if cluster_params else "")
+
+    # Base (upstream) image metadata this artifact was baked from.
+    up = build.upstream_image
+    rel = up.release if up else None
+    base = None
+    if up and rel:
+        base = {
+            "os": rel.operating_system.slug,
+            "version": rel.version,
+            "codename": rel.codename,
+            "channel": rel.get_channel_display(),
+            "released_on": rel.released_on,
+            "eol_on": rel.end_of_life_on,
+            "variant": up.variant,
+            "format": up.get_format_display(),
+            "size_bytes": up.size_bytes,
+            "checksum": up.checksum_sha256,
+            "synced_at": up.last_synced_at,
+            "source_url": up.source_url,
+            "release_notes_url": rel.release_notes_url,
+        }
     return render(request, "build_log.html", {
         "build": build,
         "events": events,
@@ -503,6 +554,7 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
         "effective_yaml": effective_yaml,
         "device_yaml": device_yaml,
         "cluster_yaml": cluster_yaml,
+        "base": base,
     })
 
 
