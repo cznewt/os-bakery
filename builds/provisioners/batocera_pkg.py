@@ -116,11 +116,16 @@ _NON_STATE_KEYS = {"osbakery", "device", "options", "role"}
 
 
 def _available_formulas(states_root: Path) -> set[str]:
-    """Top-level salt formulas present in the states tree (dirs + *.sls)."""
+    """Top-level salt formulas present in the states tree.
+
+    A formula is ``<name>.sls`` or ``<name>/init.sls`` — a bare directory
+    without init.sls (e.g. batocera/ holding only base/, arcade/) is NOT a
+    `state.apply <name>` target, so it's excluded.
+    """
     out: set[str] = set()
     if states_root.is_dir():
         for p in states_root.iterdir():
-            if p.is_dir():
+            if p.is_dir() and (p / "init.sls").is_file():
                 out.add(p.name)
             elif p.suffix == ".sls" and p.stem != "top":
                 out.add(p.stem)
