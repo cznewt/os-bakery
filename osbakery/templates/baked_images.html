@@ -51,6 +51,7 @@
               <th class="text-left px-4 py-3 font-medium">Base image</th>
               <th class="text-left px-4 py-3 font-medium">Cluster</th>
               <th class="text-left px-4 py-3 font-medium">Status</th>
+              <th class="text-left px-4 py-3 font-medium">Baked</th>
               <th class="text-left px-4 py-3 font-medium">Build time</th>
               <th class="text-left px-4 py-3 font-medium">Size</th>
               <th class="text-left px-4 py-3 font-medium">Actions</th>
@@ -64,13 +65,8 @@
                 {% if r.label %}<div class="text-xs text-stone-400">{{ r.label }}</div>{% endif %}
               </td>
               <td class="px-4 py-3 font-mono">{{ r.target }}</td>
-              <td class="px-4 py-3 whitespace-nowrap">
-                {% if r.base_version %}
-                  <div class="font-mono text-stone-700">{{ r.os }} {{ r.base_version }}{% if r.base_variant %} <span class="text-stone-400">[{{ r.base_variant }}]</span>{% endif %}</div>
-                  <div class="text-xs text-stone-400 font-mono">
-                    {% if r.base_codename %}{{ r.base_codename }} · {% endif %}{{ r.base_channel }}{% if r.base_released_on %} · {{ r.base_released_on|date:"Y-m-d" }}{% endif %}
-                  </div>
-                {% else %}<span class="text-stone-400">—</span>{% endif %}
+              <td class="px-4 py-3 whitespace-nowrap font-mono text-stone-700">
+                {% if r.base_version %}{{ r.os }} {{ r.base_version }}{% if r.base_variant %} <span class="text-stone-400">[{{ r.base_variant }}]</span>{% endif %}{% else %}<span class="text-stone-400">—</span>{% endif %}
               </td>
               <td class="px-4 py-3 font-mono text-stone-600">
                 {% if r.cluster %}<a href="/baked/?cluster={{ r.cluster_slug }}" class="hover:underline">{{ r.cluster }}</a>{% else %}<span class="text-stone-400">—</span>{% endif %}
@@ -83,6 +79,9 @@
                 {% else %}
                   <span class="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{{ r.status }}</span>
                 {% endif %}
+              </td>
+              <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">
+                {% if r.finished_at %}{{ r.finished_at|date:"Y-m-d H:i" }}{% else %}<span class="text-stone-400">—</span>{% endif %}
               </td>
               <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">
                 {% if r.build_time %}<span title="{{ r.finished_at|date:'Y-m-d H:i' }}">{{ r.build_time }}</span>{% else %}<span class="text-stone-400">—</span>{% endif %}
@@ -105,12 +104,19 @@
                     {% endif %}
                     <a href="{% url 'build_log' r.id %}"
                        class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">≡ Log</a>
+                    <form method="post" action="{% url 'delete_baked_image' r.id %}"
+                          class="border-t border-stone-100 mt-1 pt-1"
+                          onsubmit="return confirm('Delete baked image {{ r.recipe }} ({{ r.target }})? The image file is removed from S3 and the build record is deleted. This cannot be undone.');">
+                      {% csrf_token %}
+                      <button type="submit"
+                              class="w-full text-left px-3 py-1.5 text-red-700 hover:bg-red-50">✕ Delete</button>
+                    </form>
                   </div>
                 </details>
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" class="text-center py-16 text-stone-500">No baked images match this filter.</td></tr>
+            <tr><td colspan="9" class="text-center py-16 text-stone-500">No baked images match this filter.</td></tr>
             {% endfor %}
           </tbody>
         </table>

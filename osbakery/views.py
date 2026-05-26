@@ -507,6 +507,25 @@ def baked_images(request: HttpRequest) -> HttpResponse:
     return render(request, "baked_images.html", context)
 
 
+@require_POST
+def delete_baked_image(request: HttpRequest, build_id: str) -> HttpResponse:
+    """Delete a baked image: its S3 blob + the BuildRequest (cascades artifact,
+    events, download tokens)."""
+    build = get_object_or_404(BuildRequest.objects.select_related("artifact"), pk=build_id)
+    label = build.label or str(build.id)
+    art = getattr(build, "artifact", None)
+    if art and art.storage_key:
+        try:
+            storage = storages["artifacts"]
+            if storage.exists(art.storage_key):
+                storage.delete(art.storage_key)
+        except Exception as exc:  # noqa: BLE001 — surface storage errors
+            messages.error(request, f"Could not remove the S3 object: {exc}")
+    build.delete()
+    messages.success(request, f"Deleted baked image {label}.")
+    return redirect("baked_images")
+
+
 def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
     """A baked image's build log — the BuildEvent timeline + captured output."""
     build = get_object_or_404(
