@@ -78,6 +78,19 @@ OS_LOGOS: dict[str, dict[str, str]] = {
 }
 
 
+# The effective model carries two conceptual sets. Image metadata describes the
+# artifact itself (hardware identity + build/osbakery identity); everything else
+# is provisioner metadata — the pillar the provisioner (salt/…) consumes.
+_IMAGE_MODEL_KEYS = {"device", "osbakery"}
+
+
+def _split_model(model: dict) -> tuple[dict, dict]:
+    """Partition an effective model into (image_metadata, provisioner_metadata)."""
+    image = {k: v for k, v in (model or {}).items() if k in _IMAGE_MODEL_KEYS}
+    provisioner = {k: v for k, v in (model or {}).items() if k not in _IMAGE_MODEL_KEYS}
+    return image, provisioner
+
+
 def home(request: HttpRequest) -> HttpResponse:
     """Landing page — a grid of OS cards plus a few aggregate stats."""
 
@@ -515,17 +528,14 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
     art = getattr(build, "artifact", None)
     tok = art.tokens.first() if art else None
 
-    # The effective model baked onto the image (device + cluster + options),
-    # plus its device & cluster layers shown separately for clarity.
+    # The effective model splits into two sets: image metadata (device +
+    # osbakery identity) and provisioner metadata (the pillar the provisioner
+    # applies — salt/batocera/options/…).
     import yaml as _yaml
     em = build.effective_model or {}
-    effective_yaml = (_yaml.safe_dump(em, sort_keys=False, default_flow_style=False)
-                      if em else "")
-    device_block = em.get("device") or {}
-    device_yaml = (_yaml.safe_dump(device_block, sort_keys=False) if device_block else "")
-    cluster_params = (build.cluster.parameters or {}) if build.cluster_id else {}
-    cluster_yaml = (_yaml.safe_dump(cluster_params, sort_keys=False)
-                    if cluster_params else "")
+    image_model, prov_model = _split_model(em)
+    image_yaml = (_yaml.safe_dump(image_model, sort_keys=False) if image_model else "")
+    provisioner_yaml = (_yaml.safe_dump(prov_model, sort_keys=False) if prov_model else "")
 
     # Base (upstream) image metadata this artifact was baked from.
     up = build.upstream_image
@@ -552,9 +562,8 @@ def build_log(request: HttpRequest, build_id: str) -> HttpResponse:
         "events": events,
         "artifact": art,
         "token": tok.token if tok else None,
-        "effective_yaml": effective_yaml,
-        "device_yaml": device_yaml,
-        "cluster_yaml": cluster_yaml,
+        "image_yaml": image_yaml,
+        "provisioner_yaml": provisioner_yaml,
         "base": base,
         "s3_url": art.public_url if art else "",
     })
@@ -1191,7 +1200,9 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
     )
     import yaml as _yaml
     model = node.effective_model
-    model_yaml = _yaml.safe_dump(model, sort_keys=False, default_flow_style=False)
+    image_model, prov_model = _split_model(model)
+    image_yaml = _yaml.safe_dump(image_model, sort_keys=False) if image_model else ""
+    provisioner_yaml = _yaml.safe_dump(prov_model, sort_keys=False) if prov_model else ""
     cluster_params = node.cluster.parameters or {}
     cluster_yaml = _yaml.safe_dump(cluster_params, sort_keys=False) if cluster_params else ""
     node_yaml = _yaml.safe_dump(node.parameters or {}, sort_keys=False) if node.parameters else ""
@@ -1201,7 +1212,8 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
     )
     return render(request, "node_detail.html", {
         "node": node,
-        "model_yaml": model_yaml,
+        "image_yaml": image_yaml,
+        "provisioner_yaml": provisioner_yaml,
         "cluster_yaml": cluster_yaml,
         "node_yaml": node_yaml,
         "builds": builds,

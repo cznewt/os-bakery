@@ -51,10 +51,18 @@
           </span>
         </div>
         <div class="p-5 grid gap-5 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Effective model</div>
-            <pre class="text-xs text-stone-800 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ model_yaml }}</pre>
+          {% if image_yaml %}
+          <div>
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Image metadata <span class="normal-case text-stone-300">— device + identity</span></div>
+            <pre class="text-xs text-stone-800 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ image_yaml }}</pre>
           </div>
+          {% endif %}
+          {% if provisioner_yaml %}
+          <div>
+            <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Provisioner metadata <span class="normal-case text-stone-300">— pillar applied</span></div>
+            <pre class="text-xs text-stone-800 bg-stone-50 border border-stone-200 rounded p-3 overflow-x-auto whitespace-pre">{{ provisioner_yaml }}</pre>
+          </div>
+          {% endif %}
           {% if node_yaml %}
           <div>
             <div class="text-[10px] uppercase tracking-wider font-mono text-stone-400 mb-1">Node parameters (this layer)</div>
