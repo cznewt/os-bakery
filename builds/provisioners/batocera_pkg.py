@@ -45,13 +45,43 @@ def _emit(build, phase, message, level="info", **data):
     BuildEvent.objects.create(build=build, phase=phase, message=message, level=level, data=data)
 
 
-def _overlay(src: Path, dst: Path) -> None:
-    """Merge-copy src/* into dst/ (like cp -a), preserving modes."""
+def _overlay(src: Path, dst: Path) -> tuple[int, int]:
+    """Merge-copy src/* into dst/ (like cp -a), preserving modes.
+
+    Returns (files_copied, bytes_copied) for the event log.
+    """
+    n_files, n_bytes = 0, 0
     for root, _dirs, files in os.walk(src):
         rel = Path(root).relative_to(src)
         (dst / rel).mkdir(parents=True, exist_ok=True)
         for f in files:
-            shutil.copy2(Path(root) / f, dst / rel / f)
+            srcf = Path(root) / f
+            shutil.copy2(srcf, dst / rel / f)
+            n_files += 1
+            try:
+                n_bytes += srcf.stat().st_size
+            except OSError:
+                pass
+    return n_files, n_bytes
+
+
+def _free_mib(path: Path) -> tuple[int, int]:
+    """(free_MiB, total_MiB) on the filesystem holding ``path``."""
+    try:
+        st = os.statvfs(path)
+        return (st.f_bavail * st.f_frsize) // (1024 * 1024), \
+               (st.f_blocks * st.f_frsize) // (1024 * 1024)
+    except OSError:
+        return 0, 0
+
+
+def _emit_cmd(build, phase, label, cp) -> None:
+    """Emit a command result with its captured stdout/stderr tail."""
+    out = ((getattr(cp, "stdout", "") or "") + (getattr(cp, "stderr", "") or "")).strip()
+    rc = getattr(cp, "returncode", 0)
+    _emit(build, phase, f"{label} (rc={rc})",
+          level="warning" if rc else "info",
+          returncode=rc, output_tail=out[-2000:])
 
 
 def _write_minion_conf(ctx: "BuildContext", system: Path) -> None:
@@ -163,66 +193,113 @@ def provision(ctx: "BuildContext") -> bool:
     # first boot); the salt+alloy binaries don't fit. So grow the image file
     # and the SHARE partition here, before mounting, then resize its fs.
     pkg_roots = [pkg_dir / pkg / "userdata" / "system" for pkg in _PACKAGES]
-    grow_by = _dir_size(*pkg_roots) + 256 * 1024 * 1024  # payload + headroom
+    payload = _dir_size(*pkg_roots)
+    grow_by = payload + 256 * 1024 * 1024  # payload + headroom
+    img_before = ctx.target_image.stat().st_size
+    _emit(build, "grow",
+          f"Package payload {payload // (1024*1024)} MiB; growing image "
+          f"{img_before // (1024*1024)} → {(img_before+grow_by) // (1024*1024)} MiB "
+          f"(+{grow_by // (1024*1024)} MiB headroom-included).",
+          payload_mib=payload // (1024*1024), grow_mib=grow_by // (1024*1024))
     ls._sh(["truncate", "-s", f"+{grow_by}", str(ctx.target_image)])
 
     lo: str | None = None
     mounted: list[Path] = []
     try:
         lo, parts = ls._attach_loop(ctx.target_image)
-        # Batocera: the SHARE/userdata partition is the largest non-vfat one.
+        # Log the partition table the kernel sees on the loop device.
+        parts_desc = []
+        for p in parts:
+            fs = ls._sh(["blkid", "-o", "value", "-s", "TYPE", str(p)],
+                        check=False, capture=True).stdout.strip()
+            sz = int(ls._sh(["blockdev", "--getsize64", str(p)],
+                            check=False, capture=True).stdout.strip() or "0")
+            parts_desc.append(f"{p.name}={fs or '?'}/{sz // (1024*1024)}MiB")
         share_part, _boot = ls._classify_partitions(parts)
         partnum = share_part.name.rsplit("p", 1)[-1]
+        _emit(build, "grow",
+              f"Loop {lo}: {len(parts)} partitions [{', '.join(parts_desc)}]; "
+              f"SHARE = {share_part.name} (part {partnum}).")
+
         # The image was grown by `truncate`, but the GPT's backup header still
         # marks the old disk end — so `resizepart 100%` would claim nothing.
         # `sgdisk -e` relocates the backup header to the real end first.
-        ls._sh(["sgdisk", "-e", lo], check=False)
+        _emit_cmd(build, "grow", "sgdisk -e (relocate GPT backup header)",
+                  ls._sh(["sgdisk", "-e", lo], check=False, capture=True))
         ls._sh_optional(["partprobe", lo])
         ls._sh_optional(["udevadm", "settle", "--timeout=5"])
         # Now extend the partition to fill the grown disk, then resize its fs.
-        ls._sh(["parted", "-s", lo, "resizepart", partnum, "100%"], check=False)
+        _emit_cmd(build, "grow", f"parted resizepart {partnum} 100%",
+                  ls._sh(["parted", "-s", lo, "resizepart", partnum, "100%"],
+                         check=False, capture=True))
         ls._sh_optional(["partprobe", lo])
         ls._sh_optional(["udevadm", "settle", "--timeout=5"])
         fstype = ls._sh(["blkid", "-o", "value", "-s", "TYPE", str(share_part)],
                         check=False, capture=True).stdout.strip()
-        _emit(build, "provision",
-              f"Batocera SHARE: fstype={fstype or '?'}, grew image +{grow_by // (1024 * 1024)}MiB.",
-              fstype=fstype, grow_mib=grow_by // (1024 * 1024))
+        part_mib = int(ls._sh(["blockdev", "--getsize64", str(share_part)],
+                              check=False, capture=True).stdout.strip() or "0") // (1024*1024)
+        _emit(build, "grow",
+              f"SHARE {share_part.name}: fstype={fstype or '?'}, partition now {part_mib} MiB.",
+              fstype=fstype, partition_mib=part_mib)
         if fstype == "ext4":
-            ls._sh(["e2fsck", "-fy", str(share_part)], check=False)
-            ls._sh(["resize2fs", str(share_part)], check=False)
+            _emit_cmd(build, "grow", "e2fsck -fy",
+                      ls._sh(["e2fsck", "-fy", str(share_part)], check=False, capture=True))
+            _emit_cmd(build, "grow", "resize2fs",
+                      ls._sh(["resize2fs", str(share_part)], check=False, capture=True))
         elif fstype in {"exfat", "vfat", "fat", "msdos"}:
-            _emit(build, "provision",
+            _emit(build, "grow",
                   f"SHARE is {fstype} (no online grow) — overlay may still ENOSPC.",
                   level="warning")
         ls._mount(str(share_part), userdata)
         mounted.append(userdata)
+        free0, total = _free_mib(userdata)
+        _emit(build, "mount", f"Mounted SHARE at userdata: {free0}/{total} MiB free.",
+              free_mib=free0, total_mib=total)
 
         system = userdata / "system"
         system.mkdir(parents=True, exist_ok=True)
         applied: list[str] = []
         for pkg in _PACKAGES:
             src = pkg_dir / pkg / "userdata" / "system"
-            if src.is_dir():
-                _overlay(src, system)
-                applied.append(pkg)
+            if not src.is_dir():
+                _emit(build, "overlay", f"Package {pkg} not bundled — skipped.",
+                      level="warning")
+                continue
+            files, nbytes = _overlay(src, system)
+            free, _ = _free_mib(userdata)
+            _emit(build, "overlay",
+                  f"Overlaid {pkg}: {files} files, {nbytes // (1024*1024)} MiB "
+                  f"→ {free} MiB free.",
+                  package=pkg, files=files, mib=nbytes // (1024*1024), free_mib=free)
+            applied.append(pkg)
         if not applied:
-            _emit(build, "provision", f"No batocera packages found under {pkg_dir}.",
+            _emit(build, "overlay", f"No batocera packages found under {pkg_dir}.",
                   level="warning")
             return False
 
         # Bake the salt file_roots (states) + pillar_roots so masterless
         # `salt-call --local state.apply` runs the role's states on-device.
         n_states, n_pillar = _stage_salt_roots(ctx, system)
+        _emit(build, "salt-roots",
+              f"Staged file_roots ({n_states} state files) + pillar_roots "
+              f"({n_pillar} files) under {_SALT_DEVICE_ROOT}/{{states,pillar}}.",
+              state_files=n_states, pillar_files=n_pillar)
         _write_minion_conf(ctx, system)
+        opts = ctx.build.option_values or {}
+        master = getattr(settings, "SALT_MASTER_URL", "") or opts.get("salt_master", "")
+        _emit(build, "salt-roots",
+              f"Wrote minion conf: id={opts.get('minion_id') or opts.get('hostname') or build.label}, "
+              f"{'master=' + master if master else 'file_client=local'}.")
         _append_custom_sh(system, _SERVICES)
-        # Bake the merged device+cluster model onto the SHARE partition.
-        ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
         _emit(build, "provision",
-              f"Batocera: overlaid {', '.join(applied)} + salt minion config + "
-              f"file_roots ({n_states} state files) + pillar_roots ({n_pillar} files) "
-              f"under {_SALT_DEVICE_ROOT} + first-boot service enable + model.yaml.",
-              backend="batocera_pkg", state_files=n_states, pillar_files=n_pillar)
+              f"First-boot custom.sh hook: enable/start {', '.join(_SERVICES)}.")
+        ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
+        free_end, _ = _free_mib(userdata)
+        _emit(build, "provision",
+              f"Batocera provisioned: {', '.join(applied)} + salt roots + model.yaml. "
+              f"{free_end} MiB free on SHARE.",
+              backend="batocera_pkg", state_files=n_states, pillar_files=n_pillar,
+              free_mib=free_end)
         return True
     finally:
         for path in reversed(mounted):
