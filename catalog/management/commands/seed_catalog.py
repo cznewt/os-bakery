@@ -524,10 +524,9 @@ BATOCERA_IMAGES: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     # the modern x86 handhelds (Steam Deck + AYN Loki Zero).
     ("pc-amd64",  "43", "full", _BATO_X64_FULL, ()),
     ("pc-amd64",  "43", "zen",  _BATO_X64_ZEN, ("steamdeck", "loki-zero")),
-    # Anbernic RGxx3 family (RK3568) — ONE image shared by all four devices.
-    ("rg353p",    "42", "", _RGXX3, ("rg353ps", "rg353v", "rg353vs")),
-    # RG503 — RK3326 family build.
-    ("rg503",     "42", "", "https://updates.batocera.org/rk3326/stable/last/batocera-rk3326-42-20251016.img.gz", ()),
+    # Anbernic RK3566 family — ONE rgxx3 image shared by the RG353 series
+    # AND the RG503 (all Rockchip RK3566).
+    ("rg353p",    "42", "", _RGXX3, ("rg353ps", "rg353v", "rg353vs", "rg503")),
     # RG552 — stuck on the legacy v39 RK3399 build.
     ("rg552",     "39", "", "https://updates.batocera.org/rg552/stable/last/batocera-rk3399-rg552-39-20240305.img.gz", ()),
     # Retroid Snapdragon-865 handhelds (Pocket 5 + Pocket Flip 2).
