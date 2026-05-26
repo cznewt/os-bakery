@@ -91,7 +91,7 @@
       </details>
 
       {% if f_cluster %}<a href="/nodes/" class="inline-block mb-4 text-xs font-mono text-sky-700 hover:underline">✕ clear filter</a>{% endif %}
-      <div class="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+      <div class="bg-white border border-stone-200 rounded-xl shadow-sm">
         <table class="w-full text-sm">
           <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
             <tr>
@@ -122,14 +122,26 @@
                 {% else %}<span class="text-stone-400 text-xs">never baked</span>{% endif %}
               </td>
               <td class="px-4 py-3">
-                <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
-                  <a href="/nodes/{{ r.id }}/" class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">Open</a>
-                  <form method="post" action="/nodes/{{ r.id }}/bake/" class="contents">
-                    {% csrf_token %}
-                    <button type="submit" data-toast="Baking {{ r.slug }}…" data-toast-level="success"
-                            class="px-2 py-1 text-stone-700 border-l border-stone-300 hover:bg-stone-100 hover:text-stone-900">↻ Bake</button>
-                  </form>
-                </span>
+                <details class="relative inline-block text-xs">
+                  <summary class="cursor-pointer select-none font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 inline-flex items-center gap-1">Actions ▾</summary>
+                  <div class="absolute right-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-20 py-1 flex flex-col">
+                    <a href="/nodes/{{ r.id }}/" class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">↗ Open</a>
+                    <form method="post" action="/nodes/{{ r.id }}/bake/">
+                      {% csrf_token %}
+                      <button type="submit" data-toast="Baking {{ r.slug }}…" data-toast-level="success"
+                              class="w-full text-left px-3 py-1.5 text-stone-700 hover:bg-stone-100">↻ Bake</button>
+                    </form>
+                    <form method="post" action="/nodes/{{ r.id }}/clone/" class="border-t border-stone-100 mt-1 pt-2 px-3 pb-1">
+                      {% csrf_token %}
+                      <label class="block text-[10px] uppercase tracking-wider text-stone-400 mb-1">Clone as</label>
+                      <div class="flex gap-1">
+                        <input type="text" name="name" required placeholder="New node name"
+                               class="flex-1 min-w-0 border border-stone-300 rounded px-2 py-1 text-xs">
+                        <button type="submit" class="px-2 py-1 rounded bg-stone-900 text-white hover:bg-stone-700">⎘</button>
+                      </div>
+                    </form>
+                  </div>
+                </details>
               </td>
             </tr>
             {% empty %}

@@ -833,6 +833,31 @@ def node_delete(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @require_POST
+def node_clone(request: HttpRequest, pk: int) -> HttpResponse:
+    """Clone a node under a new name (same cluster/preset/target/params)."""
+    from django.utils.text import slugify
+
+    src = get_object_or_404(Node, pk=pk)
+    name = (request.POST.get("name") or "").strip()
+    if not name:
+        messages.error(request, "Provide a name for the clone.")
+        return redirect("nodes")
+    slug = slugify((request.POST.get("slug") or "").strip() or name)
+    if Node.objects.filter(cluster=src.cluster, slug=slug).exists():
+        messages.error(request, f"Node '{slug}' already exists in {src.cluster.slug}.")
+        return redirect("nodes")
+    clone = Node.objects.create(
+        cluster=src.cluster, slug=slug, name=name,
+        hostname=slug,  # fresh per-node hostname / minion id
+        preset=src.preset, hardware_target=src.hardware_target,
+        upstream_image=src.upstream_image, parameters=src.parameters,
+        tags=list(src.tags or []), notes=src.notes,
+    )
+    messages.success(request, f"Cloned {src.slug} → {clone.slug}.")
+    return redirect("node_detail", pk=clone.pk)
+
+
+@require_POST
 def drop_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     """Drop a base image's local sync — delete the mirrored blob from the
     artifact store and revert the row to 'remote'."""

@@ -28,8 +28,9 @@ RECIPES: list[dict[str, Any]] = [
                            "rg503", "loki-zero", "flip-2", "pocket-5"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "batocera.base"],
-        "pillar_overrides": {"batocera": {"boot_to_arcade": False},
-                             "role": "batocera-handheld"},
+        # No hardcoded batocera config — the salt batocera module owns
+        # boot_to_arcade/power per role; os-bakery only carries the role.
+        "pillar_overrides": {"role": "batocera-handheld"},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "handheld-1", "sort_order": 10},
@@ -58,8 +59,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64", "rpi4", "rpi5"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "batocera.base", "batocera.arcade"],
-        "pillar_overrides": {"batocera": {"boot_to_arcade": True},
-                             "role": "batocera-arcade"},
+        "pillar_overrides": {"role": "batocera-arcade"},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "arcade-1", "sort_order": 10},
@@ -81,8 +81,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "batocera.base", "batocera.minimal"],
-        "pillar_overrides": {"batocera": {"power": {"sleep_on_lid": True}},
-                             "role": "batocera-notebook"},
+        "pillar_overrides": {"role": "batocera-notebook"},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "notebook-1", "sort_order": 10},
@@ -748,6 +747,19 @@ class Command(BaseCommand):
                         pillar_overrides=spec["pillar_overrides"],
                     ),
                 )
+                # The seed is the source of truth — refresh salt_states +
+                # pillar_overrides on existing versions (e.g. when defaults the
+                # salt modules now own are stripped from a recipe).
+                if not v_created:
+                    changed = []
+                    if version.salt_states != spec["salt_states"]:
+                        version.salt_states = spec["salt_states"]
+                        changed.append("salt_states")
+                    if version.pillar_overrides != spec["pillar_overrides"]:
+                        version.pillar_overrides = spec["pillar_overrides"]
+                        changed.append("pillar_overrides")
+                    if changed:
+                        version.save(update_fields=changed)
                 report["versions"] += 1
                 report["versions+"] += int(v_created)
 
