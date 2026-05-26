@@ -124,7 +124,7 @@ RECIPES: list[dict[str, Any]] = [
         "summary": "Headless Ubuntu Server with Docker engine + compose "
                    "preinstalled. Joins the fleet as a `*-docker-*` role.",
         "os_slug": "ubuntu",
-        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "generic-arm64",
+        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "pc-arm64",
                            "vm-qemu", "vm-hyperv", "vm-virtualbox"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "base.hardening",
@@ -218,7 +218,7 @@ RECIPES: list[dict[str, Any]] = [
         "summary": "Generic Debian server — minimal base, salt-minion "
                    "ready, joins the fleet as a `linux` role.",
         "os_slug": "debian",
-        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "generic-arm64",
+        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "pc-arm64",
                            "vm-qemu", "vm-hyperv", "vm-virtualbox",
                            "beaglebone-black", "beaglebone-blue"],
         "version": "1.0.0",
@@ -643,7 +643,7 @@ RECIPES: list[dict[str, Any]] = [
         "summary": "Ubuntu Server with kubeadm + cri-o + zerotier; ready to "
                    "join an existing control plane.",
         "os_slug": "ubuntu",
-        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "generic-arm64",
+        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "pc-arm64",
                            "vm-qemu"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "base.hardening",

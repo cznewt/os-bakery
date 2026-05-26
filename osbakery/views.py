@@ -159,7 +159,7 @@ def home(request: HttpRequest) -> HttpResponse:
 
 
 _SBC_SLUGS = {
-    "generic-arm64",
+    "pc-arm64",
     "beaglebone-black", "beaglebone-blue",
     "jetson-nano", "jetson-xavier-nx", "jetson-orin-nano",
 }
@@ -213,7 +213,7 @@ _BRAND_LOGO_BY_PREFIX: list[tuple[str, str, str]] = [
     ("vm-qemu",     "https://cdn.simpleicons.org/qemu/ff6600",         "ff6600"),
     ("vm-hyperv",   "https://cdn.simpleicons.org/microsoft/0078d4",    "0078d4"),
     ("pc-amd64",    "https://cdn.simpleicons.org/intel/0071c5",        "0071c5"),
-    ("generic-arm64","https://cdn.simpleicons.org/arm/0091bd",         "0091bd"),
+    ("pc-arm64","https://cdn.simpleicons.org/arm/0091bd",         "0091bd"),
 ]
 
 

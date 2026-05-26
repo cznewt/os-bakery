@@ -240,8 +240,8 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("pc-amd64", "Generic x86_64 PC (UEFI)", "amd64", "uefi",
                notes="Laptops, mini PCs, NUC-class.",
                image_url="https://batocera.org/images/download/x86_64_models.png"),
-    TargetSeed("generic-arm64", "Generic ARM64 server", "arm64", "uefi",
-               notes="Cloud VMs, Ampere, generic non-Pi SBCs."),
+    TargetSeed("pc-arm64", "Generic ARM64 PC (UEFI)", "arm64", "uefi",
+               notes="Cloud VMs, Ampere, generic non-Pi ARM64 boards."),
     TargetSeed("vm-qemu", "QEMU / KVM virtual machine", "amd64", "uefi"),
     TargetSeed("vm-hyperv", "Microsoft Hyper-V Gen2", "amd64", "uefi"),
     TargetSeed("vm-virtualbox", "Oracle VirtualBox", "amd64", "bios"),
@@ -641,10 +641,10 @@ def _images() -> list[ImageSeed]:
         ))
 
     # Ubuntu 22.04 (Jammy) + 24.04 (Noble) — same shape: raspi-preinstalled
-    # for rpi4/5 × server/desktop, cloud for generic-arm64 + pc-amd64 server,
+    # for rpi4/5 × server/desktop, cloud for pc-arm64 + pc-amd64 server,
     # ISO for pc-amd64 desktop, cloud-image for VM targets.
     for release in ("22.04", "24.04", "26.04"):
-        rows.append(ImageSeed("ubuntu", release, "lts", "generic-arm64",
+        rows.append(ImageSeed("ubuntu", release, "lts", "pc-arm64",
                               "server",
                               _UBUNTU_CLOUD_ARM.format(release=release),
                               "img"))
@@ -667,9 +667,9 @@ def _images() -> list[ImageSeed]:
                 _UBUNTU_CLOUD_AMD.format(release=release), "img",
             ))
 
-    # Debian 13 Trixie — cloud images for generic-arm64 / pc-amd64 / VMs,
+    # Debian 13 Trixie — cloud images for pc-arm64 / pc-amd64 / VMs,
     # plus raspi.debian.net images for the Pi family.
-    rows.append(ImageSeed("debian", "13", "stable", "generic-arm64", "server",
+    rows.append(ImageSeed("debian", "13", "stable", "pc-arm64", "server",
                           _DEBIAN_CLOUD_ARM.format(codename="trixie", major="13"),
                           "qcow2"))
     rows.append(ImageSeed("debian", "13", "stable", "pc-amd64", "server",
@@ -795,7 +795,7 @@ def _images() -> list[ImageSeed]:
     # the project ships an image for (see the alternative-install page).
     haos_boards = [
         ("pc-amd64", "generic-x86-64"),
-        ("generic-arm64", "generic-aarch64"),
+        ("pc-arm64", "generic-aarch64"),
         ("rpi3", "rpi3-64"),
         ("rpi4", "rpi4-64"),
         ("rpi5", "rpi5-64"),
