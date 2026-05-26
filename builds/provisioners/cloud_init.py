@@ -111,34 +111,24 @@ def provision(ctx: "BuildContext") -> bool:
     mounted: list[Path] = []
     try:
         lo, parts = ls._attach_loop(img)
-        root_part, boot_part = ls._classify_partitions(parts)
+        root_part, _boot = ls._classify_partitions(parts)
         user_data, meta_data = _user_data(ctx), _meta_data(ctx)
 
-        if boot_part is not None:
-            # raspi-style: NoCloud user-data on the (vfat) boot partition.
-            boot = ctx.work_dir / "ci-boot"
-            boot.mkdir(exist_ok=True)
-            ls._mount(str(boot_part), boot, opts=["-o", "umask=0022"])
-            mounted.append(boot)
-            (boot / "user-data").write_text(user_data)
-            (boot / "meta-data").write_text(meta_data)
-            (boot / "network-config").write_text("version: 2\nethernets:\n  all:\n    match: {name: \"e*\"}\n    dhcp4: true\n")
-            where = f"boot partition ({boot_part.name})"
-        else:
-            # cloud-img: NoCloud seed on the root filesystem.
-            root = ctx.work_dir / "ci-root"
-            root.mkdir(exist_ok=True)
-            ls._mount(str(root_part), root)
-            mounted.append(root)
-            seed = root / "var/lib/cloud/seed/nocloud"
+        # Always seed the rootfs NoCloud dir — cloud-init checks
+        # /var/lib/cloud/seed/nocloud[-net] on every image (cloud-img, raspi,
+        # generic), unlike the ESP/boot FAT which it ignores.
+        root = ctx.work_dir / "ci-root"
+        root.mkdir(exist_ok=True)
+        ls._mount(str(root_part), root)
+        mounted.append(root)
+        for sub in ("var/lib/cloud/seed/nocloud", "var/lib/cloud/seed/nocloud-net"):
+            seed = root / sub
             seed.mkdir(parents=True, exist_ok=True)
             (seed / "user-data").write_text(user_data)
             (seed / "meta-data").write_text(meta_data)
-            where = "/var/lib/cloud/seed/nocloud"
+        where = "/var/lib/cloud/seed/nocloud[-net]"
 
-        # Bake the model alongside for inspection (same as other provisioners).
-        target = mounted[-1]
-        ls.write_model_file(target, "osbakery-model.yaml", ctx.effective_model)
+        ls.write_model_file(root, "var/lib/osbakery-model.yaml", ctx.effective_model)
         _emit(build, "cloud-init",
               f"Baked NoCloud user-data at {where}: salt-bootstrap + masterless "
               f"state.highstate on first boot.",
