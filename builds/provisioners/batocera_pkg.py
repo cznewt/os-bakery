@@ -19,6 +19,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
 from django.conf import settings
 
 from builds.models import BuildEvent
@@ -33,6 +34,9 @@ log = logging.getLogger(__name__)
 _PACKAGES = ["misc-salt-3007.8", "misc-alloy-1.11.3"]
 # Their batocera service names (for the first-boot enable hook).
 _SERVICES = ["salt_minion", "alloy"]
+
+# Where salt lives on the (persistent) batocera userdata partition at runtime.
+_SALT_DEVICE_ROOT = "/userdata/system/opt/salt"
 
 _CUSTOM_MARKER = "# --- os-bakery provisioned (do not edit below) ---"
 
@@ -51,17 +55,62 @@ def _overlay(src: Path, dst: Path) -> None:
 
 
 def _write_minion_conf(ctx: "BuildContext", system: Path) -> None:
+    """Minion config pointing at the baked-in local file_roots + pillar_roots.
+
+    With these roots present, ``salt-call --local state.apply`` (or
+    ``state.highstate``) runs the recipe's states on the device with no master.
+    """
     opts = ctx.build.option_values or {}
     master = getattr(settings, "SALT_MASTER_URL", "") or opts.get("salt_master", "")
     minion_id = opts.get("minion_id") or opts.get("hostname") or ctx.build.label or f"osbakery-{ctx.build.id}"
+    conf: dict = {
+        "id": minion_id,
+        "file_roots": {"base": [f"{_SALT_DEVICE_ROOT}/states"]},
+        "pillar_roots": {"base": [f"{_SALT_DEVICE_ROOT}/pillar"]},
+    }
+    if master:
+        # Master recorded for a connected minion; --local still reads the
+        # baked local roots above on demand.
+        conf["master"] = master
+    else:
+        conf["file_client"] = "local"
     conf_dir = system / "opt/salt/conf"
     conf_dir.mkdir(parents=True, exist_ok=True)
-    lines = [f"id: {minion_id}"]
-    if master:
-        lines.append(f"master: {master}")
+    (conf_dir / "minion").write_text(
+        yaml.safe_dump(conf, default_flow_style=False, sort_keys=False)
+    )
+
+
+def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int]:
+    """Bake the salt states (file_roots) + rendered pillar (pillar_roots) onto
+    the userdata partition so masterless ``salt-call --local`` has them.
+
+    Returns (state_files, pillar_files) counts for the event log.
+    """
+    states_src = Path(settings.SALT_STATES_ROOT)
+    states_dst = system / "opt/salt/states"
+    pillar_dst = system / "opt/salt/pillar"
+
+    if states_dst.exists():
+        shutil.rmtree(states_dst)
+    if states_src.is_dir():
+        shutil.copytree(states_src, states_dst)
     else:
-        lines.append("file_client: local")  # masterless if no master configured
-    (conf_dir / "minion").write_text("\n".join(lines) + "\n")
+        states_dst.mkdir(parents=True, exist_ok=True)
+    # The state top the orchestrator decided for this build (role's states).
+    if ctx.top_path.exists():
+        shutil.copy2(ctx.top_path, states_dst / "top.sls")
+
+    if pillar_dst.exists():
+        shutil.rmtree(pillar_dst)
+    pillar_dst.mkdir(parents=True, exist_ok=True)
+    for f in sorted(ctx.pillar_path.glob("*")):
+        if f.is_file():
+            shutil.copy2(f, pillar_dst / f.name)
+
+    n_states = sum(1 for _ in states_dst.rglob("*") if _.is_file())
+    n_pillar = sum(1 for _ in pillar_dst.rglob("*") if _.is_file())
+    return n_states, n_pillar
 
 
 def _append_custom_sh(system: Path, services: list[str]) -> None:
@@ -162,14 +211,18 @@ def provision(ctx: "BuildContext") -> bool:
                   level="warning")
             return False
 
+        # Bake the salt file_roots (states) + pillar_roots so masterless
+        # `salt-call --local state.apply` runs the role's states on-device.
+        n_states, n_pillar = _stage_salt_roots(ctx, system)
         _write_minion_conf(ctx, system)
         _append_custom_sh(system, _SERVICES)
         # Bake the merged device+cluster model onto the SHARE partition.
         ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
         _emit(build, "provision",
               f"Batocera: overlaid {', '.join(applied)} + salt minion config + "
-              "first-boot service enable + /userdata/system/osbakery/model.yaml.",
-              backend="batocera_pkg")
+              f"file_roots ({n_states} state files) + pillar_roots ({n_pillar} files) "
+              f"under {_SALT_DEVICE_ROOT} + first-boot service enable + model.yaml.",
+              backend="batocera_pkg", state_files=n_states, pillar_files=n_pillar)
         return True
     finally:
         for path in reversed(mounted):
