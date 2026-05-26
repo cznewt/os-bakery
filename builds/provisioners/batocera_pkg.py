@@ -111,11 +111,38 @@ def _write_minion_conf(ctx: "BuildContext", system: Path) -> None:
     )
 
 
-def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int]:
+# Effective-model keys that are image/identity metadata, not salt formulas.
+_NON_STATE_KEYS = {"osbakery", "device", "options", "role"}
+
+
+def _available_formulas(states_root: Path) -> set[str]:
+    """Top-level salt formulas present in the states tree (dirs + *.sls)."""
+    out: set[str] = set()
+    if states_root.is_dir():
+        for p in states_root.iterdir():
+            if p.is_dir():
+                out.add(p.name)
+            elif p.suffix == ".sls" and p.stem != "top":
+                out.add(p.stem)
+    return out
+
+
+def _states_to_apply(ctx: "BuildContext", states_root: Path) -> list[str]:
+    """Salt states to apply = the pillar's top-level keys that have a matching
+    formula (e.g. pillar `batocera` → state `batocera`), preserving order.
+    """
+    avail = _available_formulas(states_root)
+    return [k for k in (ctx.effective_model or {})
+            if k not in _NON_STATE_KEYS and k in avail]
+
+
+def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int, list[str]]:
     """Bake the salt states (file_roots) + rendered pillar (pillar_roots) onto
     the userdata partition so masterless ``salt-call --local`` has them.
 
-    Returns (state_files, pillar_files) counts for the event log.
+    The baked state ``top.sls`` applies the formulas named by the pillar's
+    top-level keys (batocera / salt / alloy / …). Returns
+    (state_files, pillar_files, states_to_apply).
     """
     states_src = Path(settings.SALT_STATES_ROOT)
     states_dst = system / "opt/salt/states"
@@ -127,9 +154,12 @@ def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int]:
         shutil.copytree(states_src, states_dst)
     else:
         states_dst.mkdir(parents=True, exist_ok=True)
-    # The state top the orchestrator decided for this build (role's states).
-    if ctx.top_path.exists():
-        shutil.copy2(ctx.top_path, states_dst / "top.sls")
+
+    # State top = the pillar's top-level keys that have a matching formula.
+    apply = _states_to_apply(ctx, states_src)
+    (states_dst / "top.sls").write_text(
+        yaml.safe_dump({"base": {"*": apply}}, default_flow_style=False)
+    )
 
     if pillar_dst.exists():
         shutil.rmtree(pillar_dst)
@@ -140,11 +170,13 @@ def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int]:
 
     n_states = sum(1 for _ in states_dst.rglob("*") if _.is_file())
     n_pillar = sum(1 for _ in pillar_dst.rglob("*") if _.is_file())
-    return n_states, n_pillar
+    return n_states, n_pillar, apply
 
 
-def _append_custom_sh(system: Path, services: list[str]) -> None:
-    """Idempotent first-boot hook: init salt + enable/start the services."""
+def _append_custom_sh(system: Path, services: list[str], apply: list[str]) -> None:
+    """Idempotent first-boot hook: enable services, then apply the pillar-keyed
+    states masterless via ``salt-call --local state.apply <key>``.
+    """
     custom = system / "custom.sh"
     existing = custom.read_text() if custom.exists() else ""
     if _CUSTOM_MARKER in existing:
@@ -154,6 +186,13 @@ def _append_custom_sh(system: Path, services: list[str]) -> None:
     for svc in services:
         block.append(f"  batocera-services enable {svc} 2>/dev/null || true")
         block.append(f"  batocera-services start {svc} 2>/dev/null || true")
+    # Apply each pillar-keyed state masterless (the salt-call wrapper already
+    # points at /userdata/system/opt/salt/conf, which has the local roots).
+    for state in apply:
+        block.append(
+            f"  /userdata/system/bin/salt-call --local state.apply {state} "
+            f">> /userdata/system/opt/salt/run/apply-{state}.log 2>&1 || true"
+        )
     block.append("  touch /userdata/system/.osbakery-provisioned")
     block.append("fi")
     header = existing if existing.startswith("#!") else "#!/bin/bash\n" + existing
@@ -279,20 +318,22 @@ def provision(ctx: "BuildContext") -> bool:
 
         # Bake the salt file_roots (states) + pillar_roots so masterless
         # `salt-call --local state.apply` runs the role's states on-device.
-        n_states, n_pillar = _stage_salt_roots(ctx, system)
+        n_states, n_pillar, apply = _stage_salt_roots(ctx, system)
         _emit(build, "salt-roots",
               f"Staged file_roots ({n_states} state files) + pillar_roots "
-              f"({n_pillar} files) under {_SALT_DEVICE_ROOT}/{{states,pillar}}.",
-              state_files=n_states, pillar_files=n_pillar)
+              f"({n_pillar} files) under {_SALT_DEVICE_ROOT}/{{states,pillar}}. "
+              f"State top applies pillar keys: {', '.join(apply) or '(none matched a formula)'}.",
+              state_files=n_states, pillar_files=n_pillar, states_applied=apply)
         _write_minion_conf(ctx, system)
         opts = ctx.build.option_values or {}
         master = getattr(settings, "SALT_MASTER_URL", "") or opts.get("salt_master", "")
         _emit(build, "salt-roots",
               f"Wrote minion conf: id={opts.get('minion_id') or opts.get('hostname') or build.label}, "
               f"{'master=' + master if master else 'file_client=local'}.")
-        _append_custom_sh(system, _SERVICES)
+        _append_custom_sh(system, _SERVICES, apply)
         _emit(build, "provision",
-              f"First-boot custom.sh hook: enable/start {', '.join(_SERVICES)}.")
+              f"First-boot custom.sh: enable {', '.join(_SERVICES)} + "
+              f"salt-call --local state.apply [{', '.join(apply) or 'none'}].")
         ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
         free_end, _ = _free_mib(userdata)
         _emit(build, "provision",
