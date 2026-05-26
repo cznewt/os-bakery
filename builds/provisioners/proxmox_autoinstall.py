@@ -13,10 +13,15 @@ gateway, dns.
 
 from __future__ import annotations
 
+import base64
+import io
 import logging
 import shutil
+import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from django.conf import settings
 
 from builds.models import BuildEvent
 from builds.provisioners import local_salt as ls
@@ -27,6 +32,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _ASSISTANT = "proxmox-auto-install-assistant"
+_NON_STATE_KEYS = {"osbakery", "device", "options", "role"}
+_SALT_BOOTSTRAP = ("https://github.com/saltstack/salt-bootstrap/releases/"
+                   "latest/download/bootstrap-salt.sh")
 
 
 def _emit(build, phase, message, level="info", **data):
@@ -74,7 +82,71 @@ def _render_answer(opts: dict) -> str:
     target_disk = (opts.get("target_disk") or "").strip()
     disk.append("disk-list = [" + _toml_str(target_disk or "sda") + "]")
 
-    return "\n".join(g + [""] + net + [""] + disk) + "\n"
+    # Run our salt-bootstrap script on first boot, once the network is up.
+    fb = ["[first-boot]", 'source = "from-iso"', 'ordering = "network-online"']
+
+    return "\n".join(g + [""] + net + [""] + disk + [""] + fb) + "\n"
+
+
+def _states_to_apply(ctx: "BuildContext", states_root: Path) -> list[str]:
+    """Pillar top-level keys that have a matching formula (<name>.sls or
+    <name>/init.sls) — the states applied masterless on the node."""
+    avail: set[str] = set()
+    if states_root.is_dir():
+        for p in states_root.iterdir():
+            if p.is_dir() and (p / "init.sls").is_file():
+                avail.add(p.name)
+            elif p.suffix == ".sls" and p.stem != "top":
+                avail.add(p.stem)
+    return [k for k in (ctx.effective_model or {})
+            if k not in _NON_STATE_KEYS and k in avail]
+
+
+def _salt_payload_b64(ctx: "BuildContext", apply: list[str]) -> str:
+    """Base64 tgz of /srv/salt (states + top), /srv/pillar (effective model),
+    and /etc/salt/minion (masterless), unpacked at first boot."""
+    states_root = Path(settings.SALT_STATES_ROOT)
+    minion = ("file_client: local\n"
+              "file_roots:\n  base:\n    - /srv/salt\n"
+              "pillar_roots:\n  base:\n    - /srv/pillar\n")
+    import yaml
+    top = yaml.safe_dump({"base": {"*": apply}}, default_flow_style=False)
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        if states_root.is_dir():
+            tf.add(str(states_root), arcname="srv/salt")
+        for f in sorted(ctx.pillar_path.glob("*")):
+            if f.is_file():
+                tf.add(str(f), arcname=f"srv/pillar/{f.name}")
+        for arc, text in (("srv/salt/top.sls", top), ("etc/salt/minion", minion)):
+            data = text.encode()
+            ti = tarfile.TarInfo(arc)
+            ti.size = len(data)
+            tf.addfile(ti, io.BytesIO(data))
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def _first_boot_script(ctx: "BuildContext", apply: list[str]) -> str:
+    """First-boot script: salt-bootstrap the minion, stage the baked local
+    roots + pillar, and apply the pillar-keyed states masterless."""
+    payload = _salt_payload_b64(ctx, apply)
+    return f"""#!/usr/bin/env bash
+set -eux
+exec >>/var/log/osbakery-firstboot.log 2>&1
+echo "[osbakery] installing salt-minion via salt-bootstrap"
+curl -fsSL -o /tmp/bootstrap-salt.sh {_SALT_BOOTSTRAP} || \\
+  wget -qO /tmp/bootstrap-salt.sh {_SALT_BOOTSTRAP}
+sh /tmp/bootstrap-salt.sh -X || true   # -X: install only, no master/daemon
+echo "[osbakery] staging local salt roots + pillar"
+base64 -d > /tmp/osbk-salt.tgz <<'OSBK_B64'
+{payload}
+OSBK_B64
+tar -xzf /tmp/osbk-salt.tgz -C /
+echo "[osbakery] masterless highstate (states: {', '.join(apply) or 'none'})"
+salt-call --local --state-output=mixed state.highstate || true
+echo "[osbakery] first-boot provisioning done"
+"""
 
 
 def provision(ctx: "BuildContext") -> bool:
@@ -101,11 +173,22 @@ def provision(ctx: "BuildContext") -> bool:
     if _emit_cmd.returncode != 0:
         raise RuntimeError("Proxmox answer.toml failed validation; see event log.")
 
+    # First-boot script: salt-bootstrap the minion + apply states masterless.
+    apply = _states_to_apply(ctx, Path(settings.SALT_STATES_ROOT))
+    fb_path = ctx.work_dir / "first-boot.sh"
+    fb_path.write_text(_first_boot_script(ctx, apply))
+    fb_path.chmod(0o755)
+    _emit(build, "proxmox",
+          f"First-boot: salt-bootstrap minion + masterless highstate "
+          f"(states: {', '.join(apply) or 'none matched a formula'}).",
+          states_applied=apply)
+
     out_iso = ctx.work_dir / f"{build.id}.iso"
     _emit(build, "proxmox", "Preparing auto-install ISO (prepare-iso --fetch-from iso).")
     cp = ls._sh([
         "proxmox-auto-install-assistant", "prepare-iso", str(ctx.target_image),
         "--fetch-from", "iso", "--answer-file", str(answer_path),
+        "--on-first-boot", str(fb_path),
         "--output", str(out_iso),
     ], check=False, capture=True)
     tail = ((cp.stdout or "") + (cp.stderr or "")).strip()
