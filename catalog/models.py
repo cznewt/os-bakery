@@ -258,6 +258,14 @@ class UpstreamImage(TimestampedModel):
         blank=True,
         help_text="Vendor variant, e.g. 'lite', 'desktop-full', 'server-minimal'.",
     )
+    extra_targets = models.ManyToManyField(
+        HardwareTarget,
+        blank=True,
+        related_name="shared_images",
+        help_text="Additional devices that run this exact same image (beyond "
+                  "the primary hardware_target) — e.g. the x86_64 build shared "
+                  "by Steam Deck + Loki Zero.",
+    )
     format = models.CharField(max_length=12, choices=Format.choices, default=Format.IMG_XZ)
     source_url = models.URLField(help_text="Where the upstream image lives (https://...).")
     checksum_sha256 = models.CharField(max_length=64, blank=True)

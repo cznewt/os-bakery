@@ -347,6 +347,7 @@ def base_images(request: HttpRequest) -> HttpResponse:
             "hardware_target",
             "hardware_target__architecture",
         )
+        .prefetch_related("extra_targets")
         .order_by(
             "release__operating_system__name",
             "-release__released_on",
@@ -579,7 +580,7 @@ def clusters(request: HttpRequest) -> HttpResponse:
         .annotate(
             baked=Count("build_requests", filter=Q(build_requests__artifact__isnull=False), distinct=True),
             builds=Count("build_requests", distinct=True),
-            nodes=Count("nodes", filter=Q(nodes__is_active=True), distinct=True),
+            node_count=Count("nodes", filter=Q(nodes__is_active=True), distinct=True),
         )
         .order_by("tenant__name", "name")
     )
@@ -1054,10 +1055,14 @@ def bake_recipe(request: HttpRequest, slug: str) -> HttpResponse:
     # so the form can present a "Device · variant" picker.
     image_choices: list[dict] = []
     if release:
+        from django.db.models import Q
         for target in targets:
-            target_images = UpstreamImage.objects.filter(
-                release=release, hardware_target=target,
-            ).order_by("variant")
+            # Images whose primary target is this device, plus shared images
+            # that list it as an extra target (x86 handhelds → x86_64 build).
+            target_images = (UpstreamImage.objects.filter(release=release)
+                             .filter(Q(hardware_target=target)
+                                     | Q(extra_targets=target))
+                             .order_by("variant").distinct())
             for img in target_images:
                 variant = img.variant or ""
                 label = target.name + (f" · {variant}" if variant else "")
@@ -1334,14 +1339,19 @@ def bake_node(request: HttpRequest, pk: int) -> HttpResponse:
             is_default=True
         ).first()
         if release:
-            img = UpstreamImage.objects.filter(
-                release=release, hardware_target=node.hardware_target
-            ).order_by("variant").first()
+            from django.db.models import Q
+            # Match the device as the image's primary target OR an extra target
+            # (x86 handhelds like Loki / Steam Deck share the one x86_64 build).
+            img = (UpstreamImage.objects.filter(release=release)
+                   .filter(Q(hardware_target=node.hardware_target)
+                           | Q(extra_targets=node.hardware_target))
+                   .order_by("variant").distinct().first())
     if img is None:
         messages.error(
             request,
             f"No base image for {recipe.operating_system.slug} on "
-            f"{node.hardware_target.slug} — sync one or pin it on the node.",
+            f"{node.hardware_target.slug} (arch {node.hardware_target.architecture.slug}) "
+            "— sync the matching base image or pin one on the node.",
         )
         return redirect("node_detail", pk=pk)
 

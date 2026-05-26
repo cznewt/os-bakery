@@ -100,7 +100,7 @@
                 {% for t in c.tags %}<span class="inline-block text-[11px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 mr-1 mb-1">{{ t }}</span>{% empty %}<span class="text-stone-300">—</span>{% endfor %}
               </td>
               <td class="px-4 py-3 font-mono">
-                {% if c.nodes %}<a href="/nodes/?cluster={{ c.slug }}" class="text-stone-700 hover:underline">{{ c.nodes }}</a>{% else %}<span class="text-stone-300">0</span>{% endif %}
+                {% if c.node_count %}<a href="/nodes/?cluster={{ c.slug }}" class="text-stone-700 hover:underline">{{ c.node_count }}</a>{% else %}<span class="text-stone-300">0</span>{% endif %}
               </td>
               <td class="px-4 py-3 font-mono text-emerald-700">{{ c.baked }}</td>
               <td class="px-4 py-3 font-mono text-stone-500">{{ c.builds }}</td>

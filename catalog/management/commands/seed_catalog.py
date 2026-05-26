@@ -213,6 +213,9 @@ class ImageSeed(NamedTuple):
     variant: str
     source_url: str
     format: str  # UpstreamImage.Format value
+    # Extra hardware targets that run this exact same image (no separate row),
+    # e.g. the batocera x86_64 build shared by steamdeck + loki-zero.
+    extra_targets: tuple[str, ...] = ()
 
 
 ARCHITECTURES: list[ArchSeed] = [
@@ -282,9 +285,15 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("rg503", "Anbernic RG503", "arm64", "uboot",
                soc="Rockchip RK3566",
                notes="OLED handheld."),
-    TargetSeed("loki-zero", "Anbernic Loki Zero", "arm64", "uboot",
-               notes="Loki-series budget handheld (per Batocera download page).",
+    TargetSeed("loki-zero", "AYN Loki Zero", "amd64", "uefi",
+               soc="AMD Mendocino",
+               notes="AYN Loki Zero — x86-64 (AMD) budget handheld; runs the "
+                     "batocera x86_64 zen build.",
                image_url="https://batocera.org/images/download/lokizero.png"),
+    TargetSeed("steamdeck", "Valve Steam Deck", "amd64", "uefi",
+               soc="AMD Aerith/Sephiroth",
+               notes="Valve Steam Deck — x86-64 handheld; runs the batocera "
+                     "x86_64 zen build."),
     TargetSeed("flip-2", "Retroid Pocket Flip 2", "arm64", "uboot",
                notes="Clamshell flip-style handheld (per Batocera download page).",
                image_url="https://batocera.org/images/download/rpflip2.png"),
@@ -486,29 +495,33 @@ RELEASES: list[ReleaseSeed] = [
 # pattern would suggest) — scraped from https://batocera.org/download.
 # Refresh when upstream cuts a new build. Bare /stable/last/ is a real
 # directory; this resolves to whatever file is currently inside it.
-BATOCERA_IMAGES: list[tuple[str, str, str]] = [
-    # (HardwareTarget slug, Batocera release version, download URL)
+# Two x86-64 batocera builds: the generic "full" PC image and the "zen"
+# (x86-64-v3) build that the modern x86 handhelds (Steam Deck, AYN Loki) run.
+_BATO_X64_FULL = "https://sour-silent-prune.6fcff5d8.katapult.cloud/images/batocera-x86_64-43-20260430.img.gz"
+_BATO_X64_ZEN = "https://updates.batocera.org/x86-64-v3/stable/last/batocera-zen3-x86-64-v3-43-20260430.img.gz"
+_RGXX3 = "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"
+
+# (primary target, version, variant, url, extra_targets that share this image)
+BATOCERA_IMAGES: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     # Single-board computers (43 = current default).
-    ("rpi3",      "43", "https://updates.batocera.org/bcm2837/stable/last/batocera-bcm2837-43-20260508.img.gz"),
-    ("rpi4",      "43", "https://updates.batocera.org/bcm2711/stable/last/batocera-bcm2711-43-20260501.img.gz"),
-    ("rpi5",      "43", "https://updates.batocera.org/bcm2712/stable/last/batocera-bcm2712-43-20260430.img.gz"),
-    ("pc-amd64",  "43", "https://updates.batocera.org/x86-64-v3/stable/last/batocera-zen3-x86-64-v3-43-20260430.img.gz"),
-    # Anbernic RGxx3 family (RK3568) — one image, four catalog rows.
-    ("rg353p",    "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
-    ("rg353ps",   "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
-    ("rg353v",    "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
-    ("rg353vs",   "42", "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"),
+    ("rpi3",      "43", "", "https://updates.batocera.org/bcm2837/stable/last/batocera-bcm2837-43-20260508.img.gz", ()),
+    ("rpi4",      "43", "", "https://updates.batocera.org/bcm2711/stable/last/batocera-bcm2711-43-20260501.img.gz", ()),
+    ("rpi5",      "43", "", "https://updates.batocera.org/bcm2712/stable/last/batocera-bcm2712-43-20260430.img.gz", ()),
+    # x86-64: two builds. "full" = generic PC; "zen" (x86-64-v3) is shared by
+    # the modern x86 handhelds (Steam Deck + AYN Loki Zero).
+    ("pc-amd64",  "43", "full", _BATO_X64_FULL, ()),
+    ("pc-amd64",  "43", "zen",  _BATO_X64_ZEN, ("steamdeck", "loki-zero")),
+    # Anbernic RGxx3 family (RK3568) — ONE image shared by all four devices.
+    ("rg353p",    "42", "", _RGXX3, ("rg353ps", "rg353v", "rg353vs")),
     # RG503 — RK3326 family build.
-    ("rg503",     "42", "https://updates.batocera.org/rk3326/stable/last/batocera-rk3326-42-20251016.img.gz"),
+    ("rg503",     "42", "", "https://updates.batocera.org/rk3326/stable/last/batocera-rk3326-42-20251016.img.gz", ()),
     # RG552 — stuck on the legacy v39 RK3399 build.
-    ("rg552",     "39", "https://updates.batocera.org/rg552/stable/last/batocera-rk3399-rg552-39-20240305.img.gz"),
+    ("rg552",     "39", "", "https://updates.batocera.org/rg552/stable/last/batocera-rk3399-rg552-39-20240305.img.gz", ()),
     # Retroid Snapdragon-865 handhelds (Pocket 5 + Pocket Flip 2).
-    ("pocket-5",  "42", "https://updates.batocera.org/rp5/stable/last/batocera-sm8250-rp5-42-20251011.img.gz"),
-    ("flip-2",    "42", "https://updates.batocera.org/rpflip2/stable/last/batocera-sm8250-rpflip2-42-20251011.img.gz"),
-    # SM8550 share-build (AYN Odin 2 / Loki Zero / a handful of others all
-    # ship the same Snapdragon 8 Gen 2 image).
-    ("ayn-odin-2", "43", "https://updates.batocera.org/sm8550/stable/last/batocera-sm8550-43-20260507.img.gz"),
-    ("loki-zero",  "43", "https://updates.batocera.org/sm8550/stable/last/batocera-sm8550-43-20260507.img.gz"),
+    ("pocket-5",  "42", "", "https://updates.batocera.org/rp5/stable/last/batocera-sm8250-rp5-42-20251011.img.gz", ()),
+    ("flip-2",    "42", "", "https://updates.batocera.org/rpflip2/stable/last/batocera-sm8250-rpflip2-42-20251011.img.gz", ()),
+    # SM8550 share-build (AYN Odin 2 on Snapdragon 8 Gen 2).
+    ("ayn-odin-2", "43", "", "https://updates.batocera.org/sm8550/stable/last/batocera-sm8550-43-20260507.img.gz", ()),
 ]
 
 # Ubuntu — URL patterns are uniform across modern LTS releases; the only
@@ -602,9 +615,10 @@ def _images() -> list[ImageSeed]:
     # Batocera — explicit per-target URLs because the upstream filename
     # is date-stamped (not "stable.img.gz") and per-device builds branch
     # off at different versions. See BATOCERA_IMAGES above.
-    for target, version, url in BATOCERA_IMAGES:
+    for target, version, variant, url, extra in BATOCERA_IMAGES:
         rows.append(ImageSeed(
-            "batocera", version, "stable", target, "", url, "img.gz",
+            "batocera", version, "stable", target, variant, url, "img.gz",
+            extra_targets=extra,
         ))
 
     # Ubuntu 22.04 (Jammy) + 24.04 (Noble) — same shape: raspi-preinstalled
@@ -849,11 +863,22 @@ class Command(BaseCommand):
                         image_url=tseed.image_url,
                     ),
                 )
-                # Refresh image_url even on existing rows — the seed is the
-                # source of truth for these.
-                if not created and obj.image_url != tseed.image_url:
-                    obj.image_url = tseed.image_url
-                    obj.save(update_fields=["image_url"])
+                # The seed is the source of truth — refresh core fields on
+                # existing rows too (name, arch, boot, soc, notes, image_url).
+                if not created:
+                    want = dict(
+                        name=tseed.name,
+                        architecture=arch_by_slug[tseed.architecture],
+                        boot_method=tseed.boot_method,
+                        soc=tseed.soc,
+                        notes=tseed.notes,
+                        image_url=tseed.image_url,
+                    )
+                    changed = [f for f, v in want.items() if getattr(obj, f) != v]
+                    if changed:
+                        for f, v in want.items():
+                            setattr(obj, f, v)
+                        obj.save(update_fields=changed)
                 target_by_slug[tseed.slug] = obj
                 report["target"] += 1
                 report["target+"] += int(created)
@@ -945,6 +970,10 @@ class Command(BaseCommand):
                     changed.append("format")
                 if changed:
                     obj.save(update_fields=changed)
+                # Extra devices that share this exact image (M2M).
+                extra = [target_by_slug[s] for s in iseed.extra_targets
+                         if s in target_by_slug]
+                obj.extra_targets.set(extra)
                 report["image"] += 1
                 report["image+"] += int(created)
                 if not quiet:
