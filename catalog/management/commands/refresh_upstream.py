@@ -4,9 +4,10 @@ Populates ``UpstreamImage.cache_storage_key`` so the build orchestrator
 fetches the cached blob from the same backend that serves artifacts —
 no shared filesystem volume needed across workers.
 
-Cache layout in the bucket::
+Cache layout in the bucket — the mirror keeps the original (decompressed)
+upstream filename so the cached object matches the source image::
 
-    cache/<os-slug>/<target-slug>/<version>-<variant>.img
+    cache/<os-slug>/<original-image-name>.img
 
 Usage::
 
@@ -93,16 +94,28 @@ class Command(BaseCommand):
 
     # -----------------------------------------------------------------
 
+    @staticmethod
+    def _cache_key(img: UpstreamImage) -> str:
+        """Mirror key that keeps the original (decompressed) image filename.
+
+        e.g. source batocera-zen3-x86-64-v3-43-20260430.img.gz is cached as
+        cache/batocera/batocera-zen3-x86-64-v3-43-20260430.img. Falls back to a
+        synthesised <version>-<variant>.img when the URL has no usable filename.
+        """
+        os_slug = img.release.operating_system.slug
+        name = (img.source_url.rsplit("/", 1)[-1] or "").split("?")[0]
+        for ext in (".gz", ".xz", ".bz2", ".zst", ".zip"):
+            if name.lower().endswith(ext):
+                name = name[: -len(ext)]
+                break
+        if not name or "." not in name:
+            variant_tag = img.variant or "base"
+            name = f"{img.release.version}-{variant_tag}.img"
+        return f"cache/{os_slug}/{name}"
+
     def _refresh_one(self, img: UpstreamImage, *, force: bool) -> None:
         storage = storages["artifacts"]
-
-        os_slug = img.release.operating_system.slug
-        target_slug = img.hardware_target.slug
-        variant_tag = img.variant or "base"
-        cache_key = (
-            f"cache/{os_slug}/{target_slug}/"
-            f"{img.release.version}-{variant_tag}.img"
-        )
+        cache_key = self._cache_key(img)
 
         if storage.exists(cache_key) and not force:
             self.stdout.write(f"  [cached]  {img}: {cache_key}")
