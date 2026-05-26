@@ -126,7 +126,15 @@
                 <td class="px-4 py-3 font-mono text-stone-600">{{ img.release.channel }}</td>
                 <td class="px-4 py-3 font-mono text-stone-600 whitespace-nowrap">{{ img.release.released_on|date:"Y-m-d"|default:"—" }}</td>
                 <td class="px-4 py-3 font-mono">
-                  {{ img.hardware_target.slug }}{% for t in img.extra_targets.all %}<span class="text-stone-400">, {{ t.slug }}</span>{% endfor %}
+                  {% with extras=img.extra_targets.all %}
+                  {% if extras %}
+                  <span class="border-b border-dotted border-stone-400 cursor-help"
+                        title="Also runs on: {% for t in extras %}{{ t.slug }}{% if not forloop.last %}, {% endif %}{% endfor %}">{{ img.hardware_target.slug }}</span>
+                  <span class="ml-1 text-[10px] text-stone-500 align-middle">+{{ extras|length }}</span>
+                  {% else %}
+                  {{ img.hardware_target.slug }}
+                  {% endif %}
+                  {% endwith %}
                 </td>
                 <td class="px-4 py-3 font-mono text-stone-500">{{ img.hardware_target.architecture.slug }}</td>
                 <td class="px-4 py-3 font-mono">
