@@ -11,14 +11,23 @@ batocera_system_dir:
     - name: /userdata/system
     - makedirs: True
 
+batocera_conf_exists:
+  file.managed:
+    - name: /userdata/system/batocera.conf
+    - replace: False
+    - contents: "# Managed by os-bakery (initial defaults).\n"
+    - require:
+      - file: batocera_system_dir
+
 batocera_osbakery_marker:
   file.managed:
     - name: /userdata/system/.osbakery-salt-applied
-    - makedirs: True
     - contents: |
         Applied by os-bakery via: salt-call --local state.apply batocera
         hostname: {{ opts.get('hostname', 'batocera') }}
         boot_to_arcade: {{ b.get('boot_to_arcade', False) }}
+    - require:
+      - file: batocera_system_dir
 
 batocera_conf_boottoarcade:
   file.replace:
@@ -26,7 +35,8 @@ batocera_conf_boottoarcade:
     - pattern: '^system\.es\.boottoarcade=.*'
     - repl: 'system.es.boottoarcade={{ 1 if b.get("boot_to_arcade") else 0 }}'
     - append_if_not_found: True
-    - create_if_not_exists: True
+    - require:
+      - file: batocera_conf_exists
 
 {% if opts.get('hostname') %}
 batocera_conf_hostname:
@@ -35,5 +45,6 @@ batocera_conf_hostname:
     - pattern: '^system\.hostname=.*'
     - repl: 'system.hostname={{ opts["hostname"] }}'
     - append_if_not_found: True
-    - create_if_not_exists: True
+    - require:
+      - file: batocera_conf_exists
 {% endif %}
