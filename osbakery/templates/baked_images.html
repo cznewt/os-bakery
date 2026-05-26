@@ -42,12 +42,11 @@
       {% if f_cluster or f_os or f_recipe or f_status %}
       <a href="/baked/" class="inline-block mb-4 text-xs font-mono text-sky-700 hover:underline">✕ clear filters</a>
       {% endif %}
-      <div class="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+      <div class="bg-white border border-stone-200 rounded-xl shadow-sm">
         <table class="w-full text-sm">
           <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
             <tr>
               <th class="text-left px-6 py-3 font-medium">Recipe</th>
-              <th class="text-left px-4 py-3 font-medium">OS</th>
               <th class="text-left px-4 py-3 font-medium">Target</th>
               <th class="text-left px-4 py-3 font-medium">Base image</th>
               <th class="text-left px-4 py-3 font-medium">Cluster</th>
@@ -64,7 +63,6 @@
                 <div>{{ r.recipe }}</div>
                 {% if r.label %}<div class="text-xs text-stone-400">{{ r.label }}</div>{% endif %}
               </td>
-              <td class="px-4 py-3 font-mono text-stone-600">{{ r.os }}</td>
               <td class="px-4 py-3 font-mono">{{ r.target }}</td>
               <td class="px-4 py-3 whitespace-nowrap">
                 {% if r.base_version %}
@@ -93,23 +91,26 @@
                 {% if r.size_bytes %}{{ r.size_bytes|filesizeformat }}{% else %}<span class="text-stone-400">—</span>{% endif %}
               </td>
               <td class="px-4 py-3">
-                <span class="inline-flex rounded border border-stone-300 overflow-hidden text-xs font-medium">
-                  {% if r.s3_url %}
-                  <a href="{{ r.s3_url }}"
-                     data-toast="Downloading {{ r.recipe }} ({{ r.target }}) from S3…" data-toast-level="success"
-                     class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">↓ Download</a>
-                  {% elif r.token %}
-                  <a href="/d/{{ r.token }}/"
-                     data-toast="Downloading {{ r.recipe }} ({{ r.target }})…" data-toast-level="success"
-                     class="px-2 py-1 text-stone-700 hover:bg-stone-100 hover:text-stone-900">↓ Download</a>
-                  {% endif %}
-                  <a href="{% url 'build_log' r.id %}"
-                     class="px-2 py-1 text-stone-700 {% if r.token %}border-l border-stone-300{% endif %} hover:bg-stone-100 hover:text-stone-900">≡ Log</a>
-                </span>
+                <details class="relative inline-block text-xs">
+                  <summary class="cursor-pointer select-none font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 inline-flex items-center gap-1">Actions ▾</summary>
+                  <div class="absolute right-0 mt-1 w-48 bg-white border border-stone-200 rounded-lg shadow-lg z-20 py-1 flex flex-col">
+                    {% if r.s3_url %}
+                    <a href="{{ r.s3_url }}"
+                       data-toast="Downloading {{ r.recipe }} ({{ r.target }}) from S3…" data-toast-level="success"
+                       class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">↓ Download (S3)</a>
+                    {% elif r.token %}
+                    <a href="/d/{{ r.token }}/"
+                       data-toast="Downloading {{ r.recipe }} ({{ r.target }})…" data-toast-level="success"
+                       class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">↓ Download</a>
+                    {% endif %}
+                    <a href="{% url 'build_log' r.id %}"
+                       class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">≡ Log</a>
+                  </div>
+                </details>
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="9" class="text-center py-16 text-stone-500">No baked images match this filter.</td></tr>
+            <tr><td colspan="8" class="text-center py-16 text-stone-500">No baked images match this filter.</td></tr>
             {% endfor %}
           </tbody>
         </table>
