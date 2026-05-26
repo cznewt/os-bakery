@@ -99,8 +99,10 @@ RECIPES: list[dict[str, Any]] = [
         "summary": "Ubuntu desktop image — GNOME preconfigured, common dev "
                    "tools, sane defaults.",
         "os_slug": "ubuntu",
-        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5"],
+        "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "vm-qemu"],
         "version": "1.0.0",
+        # cloud-init seed: salt-bootstrap + masterless highstate at first boot.
+        "provisioner": "cloud-init",
         "salt_states": ["base.locale", "base.users", "ubuntu.base"],
         "pillar_overrides": {"variant": "desktop", "role": "ubuntu-desktop"},
         "options": [
@@ -719,8 +721,8 @@ class Command(BaseCommand):
                     slug__in=[r["slug"] for r in RECIPES]
                 ).delete()
 
-            # All shipped recipes provision via Salt today.
-            salt_prov = Provisioner.objects.filter(slug="salt").first()
+            # Provisioner per recipe — defaults to Salt; a few use cloud-init.
+            provs = {p.slug: p for p in Provisioner.objects.all()}
 
             for spec in RECIPES:
                 os_ = OperatingSystem.objects.get(slug=spec["os_slug"])
@@ -734,8 +736,9 @@ class Command(BaseCommand):
                         visibility=Recipe.Visibility.PUBLIC,
                     ),
                 )
-                if salt_prov and recipe.provisioner_id != salt_prov.id:
-                    recipe.provisioner = salt_prov
+                want_prov = provs.get(spec.get("provisioner", "salt"))
+                if want_prov and recipe.provisioner_id != want_prov.id:
+                    recipe.provisioner = want_prov
                     recipe.save(update_fields=["provisioner"])
                 report["recipes"] += 1
                 report["recipes+"] += int(created)

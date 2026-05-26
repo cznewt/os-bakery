@@ -267,8 +267,9 @@ def _mount_and_provision(ctx: BuildContext) -> None:
     the in-house chroot path isn't available. If neither runs, the image ships
     as the unmodified upstream base.
     """
-    from builds.provisioners import (batocera_pkg, haos_pkg, local_salt,
-                                      packer_arm_tools, proxmox_autoinstall)
+    from builds.provisioners import (batocera_pkg, cloud_init, haos_pkg,
+                                      local_salt, packer_arm_tools,
+                                      proxmox_autoinstall)
 
     recipe = ctx.build.recipe_version.recipe
     prov = recipe.provisioner.slug if recipe.provisioner_id else "salt"
@@ -313,11 +314,20 @@ def _mount_and_provision(ctx: BuildContext) -> None:
         # Legacy backend (master-connected minion via packer-arm-tools chroot).
         if packer_arm_tools.provision(ctx):
             return
-    elif prov in ("ansible", "cloud-init"):
+    elif prov == "cloud-init":
+        # Bake a NoCloud user-data: salt-bootstrap + masterless highstate at
+        # first boot (Ubuntu cloud-img / raspi / desktop).
+        if cloud_init.provision(ctx):
+            return
+        _emit(ctx.build, "provision",
+              "cloud-init seed did not run — shipping the base image.",
+              level="warning")
+        return
+    elif prov == "ansible":
         _emit(
             ctx.build, "provision",
-            f"Provisioner '{prov}' is not yet implemented — shipping the base "
-            f"image unmodified.",
+            "Provisioner 'ansible' is not yet implemented — shipping the base "
+            "image unmodified.",
             level="warning", provisioner=prov,
         )
         return
