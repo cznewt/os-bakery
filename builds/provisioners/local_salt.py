@@ -93,12 +93,40 @@ def _needs_emulation(guest_arch: str) -> bool:
     return guest_arch in _QEMU_FOR_ARCH
 
 
-def _attach_loop(img: Path) -> tuple[str, list[Path]]:
+def _is_qcow2(path: Path) -> bool:
+    """True if the file starts with the qcow2 magic (QFI\\xfb)."""
+    try:
+        with path.open("rb") as fh:
+            return fh.read(4) == b"QFI\xfb"
+    except OSError:
+        return False
+
+
+# loop device -> (raw working copy, original qcow2 path) for images we had to
+# convert to raw to loop-mount. _detach_loop repacks raw -> qcow2 on teardown.
+_LOOP_QCOW2: dict[str, tuple[Path, Path]] = {}
+
+
+def _attach_loop(img: Path, ctx: "BuildContext | None" = None) -> tuple[str, list[Path]]:
     """losetup -P the image, then wait for partition nodes to materialise.
 
-    Returns (loop_device, [partition_paths]). Raises if no partitions appear.
+    qcow2 images (Ubuntu/Debian cloud-img, HAOS .qcow2.xz) have no raw
+    partition table for losetup to scan, so convert to a raw sibling first and
+    attach that; _detach_loop repacks the raw back into the original qcow2 on
+    teardown. Returns (loop_device, [partition_paths]). Raises if none appear.
     """
-    lo = _sh(["losetup", "-f", "-P", "--show", str(img)], capture=True).stdout.strip()
+    attach = img
+    raw: Path | None = None
+    if _is_qcow2(img):
+        raw = img.with_suffix(".raw.img")
+        if ctx is not None:
+            _emit(ctx.build, "prepare",
+                  "Source is qcow2 — converting to raw to loop-mount.")
+        _sh(["qemu-img", "convert", "-O", "raw", str(img), str(raw)])
+        attach = raw
+    lo = _sh(["losetup", "-f", "-P", "--show", str(attach)], capture=True).stdout.strip()
+    if raw is not None:
+        _LOOP_QCOW2[lo] = (raw, img)
     name = Path(lo).name
     # Partition device nodes are created asynchronously by udev after the
     # PARTSCAN uevent. Settle + retry instead of racing into a mount.
@@ -111,6 +139,17 @@ def _attach_loop(img: Path) -> tuple[str, list[Path]]:
         _sh_optional(["partprobe", lo])
         time.sleep(0.25)
     raise RuntimeError(f"no partition nodes appeared for {lo} after losetup -P")
+
+
+def _detach_loop(lo: str) -> None:
+    """Detach a loop device from _attach_loop; if it was a converted qcow2,
+    repack the modified raw back into the original qcow2 artifact."""
+    _sh(["losetup", "-d", lo], check=False)
+    entry = _LOOP_QCOW2.pop(lo, None)
+    if entry is not None:
+        raw, original = entry
+        _sh(["qemu-img", "convert", "-O", "qcow2", str(raw), str(original)])
+        raw.unlink(missing_ok=True)
 
 
 def _classify_partitions(parts: list[Path]) -> tuple[Path, Path | None]:
@@ -281,7 +320,7 @@ def provision(ctx: "BuildContext") -> bool:
     lo: str | None = None
     mounted: list[Path] = []
     try:
-        lo, parts = _attach_loop(ctx.target_image)
+        lo, parts = _attach_loop(ctx.target_image, ctx)
         root_part, boot_part = _classify_partitions(parts)
         _mount(str(root_part), rootfs)
         mounted.append(rootfs)
@@ -331,4 +370,4 @@ def provision(ctx: "BuildContext") -> bool:
         for path in reversed(mounted):
             _sh(["umount", "-lf", str(path)], check=False)
         if lo:
-            _sh(["losetup", "-d", lo], check=False)
+            _detach_loop(lo)

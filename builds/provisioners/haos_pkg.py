@@ -57,7 +57,7 @@ def provision(ctx: "BuildContext") -> bool:
     lo: str | None = None
     mounted: list[Path] = []
     try:
-        lo, parts = ls._attach_loop(ctx.target_image)
+        lo, parts = ls._attach_loop(ctx.target_image, ctx)
         # hassos-boot is the FAT partition; HAOS reads CONFIG/ + authorized_keys there.
         _root, boot_part = ls._classify_partitions(parts)
         if boot_part is None:
@@ -121,4 +121,4 @@ def provision(ctx: "BuildContext") -> bool:
         for path in reversed(mounted):
             ls._sh(["umount", "-lf", str(path)], check=False)
         if lo:
-            ls._sh(["losetup", "-d", lo], check=False)
+            ls._detach_loop(lo)
