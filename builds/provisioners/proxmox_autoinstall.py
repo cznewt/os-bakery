@@ -98,8 +98,10 @@ def _states_to_apply(ctx: "BuildContext", states_root: Path) -> list[str]:
                 avail.add(p.name)
             elif p.suffix == ".sls" and p.stem != "top":
                 avail.add(p.stem)
-    return [k for k in (ctx.effective_model or {})
+    keys = [k for k in (ctx.effective_model or {})
             if k not in _NON_STATE_KEYS and k in avail]
+    from builds.orchestrator import order_formulas
+    return order_formulas(keys)
 
 
 def _salt_payload_b64(ctx: "BuildContext", apply: list[str]) -> str:

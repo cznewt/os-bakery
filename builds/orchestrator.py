@@ -155,6 +155,24 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+# Formula apply order: OS / base-identity formulas run FIRST (they lay down the
+# user, locale, repos, base packages the rest build on), then everything else in
+# its original order. Lower weight = earlier.
+_OS_LEVEL_FORMULAS: tuple[str, ...] = (
+    "linux", "macos", "windows", "batocera", "raspios", "raspberrypi",
+)
+
+
+def order_formulas(names) -> list[str]:
+    """Stable-sort formula names so OS-level formulas apply first.
+
+    Names not in the OS-level list keep their incoming relative order (Python's
+    sort is stable), so a recipe's deliberate ordering of the rest is preserved.
+    """
+    rank = {name: i for i, name in enumerate(_OS_LEVEL_FORMULAS)}
+    return sorted(names, key=lambda n: rank.get(n, len(_OS_LEVEL_FORMULAS)))
+
+
 def _device_model(build: BuildRequest) -> dict:
     """The device's own contribution to the model: its hardware identity."""
     ht = build.hardware_target
@@ -232,11 +250,41 @@ def _write_pillar(ctx: BuildContext) -> None:
     pillar_root = Path(settings.SALT_PILLAR_ROOT)
     vendored = pillar_root.is_dir() and any(pillar_root.rglob("*.sls"))
     if vendored:
+        # Bake the gedu pillar tree verbatim for reference / includes.
         for f in pillar_root.rglob("*"):
             if f.is_file():
                 dst = ctx.pillar_path / f.relative_to(pillar_root)
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(f, dst)
+
+        # The vendored gedu tree ships NO top.sls (its real top lives in gedu's
+        # inventory, not the docker files we vendored). Without an explicit top
+        # that ASSIGNS pillar to the minion, masterless salt-call resolves an
+        # EMPTY pillar and every formula runs with no config. So synthesize the
+        # minion's pillar = each applied formula's gedu state-default
+        # (state/<formula>/init.sls) deep-merged UNDER the os-bakery effective
+        # model (the model — cluster + node + device — wins), and a top that
+        # assigns it. Single-purpose image ⇒ match '*'.
+        merged: dict = {}
+        state_defaults = pillar_root / "state"
+        for formula in pillar:
+            frag_file = state_defaults / formula / "init.sls"
+            if not frag_file.is_file():
+                frag_file = state_defaults / f"{formula}.sls"
+            if frag_file.is_file():
+                try:
+                    frag = yaml.safe_load(frag_file.read_text()) or {}
+                except yaml.YAMLError:
+                    frag = {}  # Jinja-templated default — skip, model still wins
+                if isinstance(frag, dict):
+                    merged = _deep_merge(merged, frag)
+        merged = _deep_merge(merged, pillar)
+        (ctx.pillar_path / "osbakery_model.sls").write_text(
+            yaml.safe_dump(merged, sort_keys=False)
+        )
+        (ctx.pillar_path / "top.sls").write_text(
+            yaml.safe_dump({"base": {"*": ["osbakery_model"]}})
+        )
     else:
         (ctx.pillar_path / "top.sls").write_text(
             yaml.safe_dump({"base": {"*": [rv.recipe.slug]}})

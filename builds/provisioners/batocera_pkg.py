@@ -97,6 +97,16 @@ def _write_minion_conf(ctx: "BuildContext", system: Path) -> None:
         "id": minion_id,
         "file_roots": {"base": [f"{_SALT_DEVICE_ROOT}/states"]},
         "pillar_roots": {"base": [f"{_SALT_DEVICE_ROOT}/pillar"]},
+        # Load custom .py modules straight from these dirs at minion startup —
+        # the batocera salt package convention (see misc-salt salt-init-minion),
+        # which we must replicate here because writing this conf pre-empts that
+        # script's own block. Custom grains (machine_model, usb_devices,
+        # batocera_resolution) and the batocera state/exec modules live here and
+        # must be present BEFORE the first state run, so file_roots `_grains`/
+        # `_modules` + saltutil.sync isn't enough on its own.
+        "module_dirs": [f"{_SALT_DEVICE_ROOT}/modules"],
+        "states_dirs": [f"{_SALT_DEVICE_ROOT}/states"],
+        "grains_dirs": [f"{_SALT_DEVICE_ROOT}/grains"],
     }
     if master:
         # Master recorded for a connected minion; --local still reads the
@@ -137,8 +147,10 @@ def _states_to_apply(ctx: "BuildContext", states_root: Path) -> list[str]:
     formula (e.g. pillar `batocera` → state `batocera`), preserving order.
     """
     avail = _available_formulas(states_root)
-    return [k for k in (ctx.effective_model or {})
+    keys = [k for k in (ctx.effective_model or {})
             if k not in _NON_STATE_KEYS and k in avail]
+    from builds.orchestrator import order_formulas
+    return order_formulas(keys)
 
 
 def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int, list[str]]:
@@ -153,10 +165,11 @@ def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int, list
     states_dst = system / "opt/salt/states"
     pillar_dst = system / "opt/salt/pillar"
 
-    if states_dst.exists():
-        shutil.rmtree(states_dst)
+    # Merge (don't rmtree): the batocera package overlay already placed its own
+    # custom state module at <root>/states/batocera.py — wiping the dir would
+    # delete it. The gedu .sls file_roots tree layers on top.
     if states_src.is_dir():
-        shutil.copytree(states_src, states_dst)
+        shutil.copytree(states_src, states_dst, dirs_exist_ok=True)
     else:
         states_dst.mkdir(parents=True, exist_ok=True)
 
@@ -178,6 +191,37 @@ def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int, list
     return n_states, n_pillar, apply
 
 
+# Salt file_roots use leading-underscore dirs (`_grains`, `_modules`, …) that
+# normally require `saltutil.sync_*`. The batocera package instead loads .py
+# modules directly from un-underscored dirs via module_dirs/states_dirs/
+# grains_dirs (see _write_minion_conf). Copy the vendored gedu custom modules
+# into those same dirs so they load at minion startup, before the first state
+# run — merging with (not clobbering) the package's own modules.
+_EXTMOD_MAP = {
+    "_grains": "grains", "_modules": "modules", "_states": "states",
+    "_utils": "utils", "_renderers": "renderers",
+}
+
+
+def _stage_extension_modules(system: Path) -> dict[str, int]:
+    """Copy gedu custom modules from file_roots `_X/` into `<root>/X/`."""
+    states_src = Path(settings.SALT_STATES_ROOT)
+    staged: dict[str, int] = {}
+    for under, plain in _EXTMOD_MAP.items():
+        src = states_src / under
+        if not src.is_dir():
+            continue
+        dst = system / "opt" / "salt" / plain
+        dst.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for f in src.glob("*.py"):
+            shutil.copy2(f, dst / f.name)
+            n += 1
+        if n:
+            staged[plain] = n
+    return staged
+
+
 def _append_custom_sh(system: Path, services: list[str], apply: list[str]) -> None:
     """Idempotent first-boot hook: enable services, then apply the pillar-keyed
     states masterless via ``salt-call --local state.apply <key>``.
@@ -191,6 +235,15 @@ def _append_custom_sh(system: Path, services: list[str], apply: list[str]) -> No
     for svc in services:
         block.append(f"  batocera-services enable {svc} 2>/dev/null || true")
         block.append(f"  batocera-services start {svc} 2>/dev/null || true")
+    # Sync the custom salt modules baked into file_roots (_grains, _modules,
+    # _states, _returners, _utils, …) into the minion's extmods cache BEFORE
+    # applying states. Custom grains (machine_model, usb_devices) load at minion
+    # startup, so without this first-boot sync the grain-dependent states would
+    # run with those grains absent. Runs on-device (real hardware), not at bake.
+    block.append(
+        "  /userdata/system/bin/salt-call --local saltutil.sync_all refresh=True "
+        ">> /userdata/system/opt/salt/run/sync.log 2>&1 || true"
+    )
     # Apply each pillar-keyed state masterless (the salt-call wrapper already
     # points at /userdata/system/opt/salt/conf, which has the local roots).
     for state in apply:
@@ -440,6 +493,12 @@ def provision(ctx: "BuildContext") -> bool:
               f"({n_pillar} files) under {_SALT_DEVICE_ROOT}/{{states,pillar}}. "
               f"State top applies pillar keys: {', '.join(apply) or '(none matched a formula)'}.",
               state_files=n_states, pillar_files=n_pillar, states_applied=apply)
+        extmods = _stage_extension_modules(system)
+        if extmods:
+            _emit(build, "salt-roots",
+                  "Copied custom modules to the minion module path: "
+                  + ", ".join(f"{v}→/opt/salt/{k}" for k, v in extmods.items())
+                  + ".", extmods=extmods)
         _write_minion_conf(ctx, system)
         opts = ctx.build.option_values or {}
         master = getattr(settings, "SALT_MASTER_URL", "") or opts.get("salt_master", "")

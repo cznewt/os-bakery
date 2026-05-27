@@ -1242,6 +1242,12 @@ DOCS_ON_SITE: dict[str, dict[str, str]] = {
                    "PCs, VMs, future targets.",
         "file": "docs/platforms.md",
     },
+    "salt-states": {
+        "title": "Salt states we bake",
+        "tagline": "The vendored gedu salt formulas — what each does, the "
+                   "per-OS dispatch pattern, and how bakes apply them.",
+        "file": "docs/salt-states.md",
+    },
 }
 
 
