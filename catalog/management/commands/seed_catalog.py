@@ -247,6 +247,11 @@ HARDWARE_TARGETS: list[TargetSeed] = [
     TargetSeed("vm-virtualbox", "Oracle VirtualBox", "amd64", "bios"),
     TargetSeed("vm-vmware", "VMware ESXi / vSphere / Workstation", "amd64", "uefi",
                notes="HAOS OVA appliance for VMware."),
+    # macOS hosts.
+    TargetSeed("mac-apple-silicon", "Apple silicon Mac", "arm64", "uefi",
+               soc="Apple M-series", notes="M1/M2/M3/M4 Macs (arm64)."),
+    TargetSeed("mac-intel", "Intel Mac", "amd64", "uefi",
+               notes="2020-and-earlier Intel Macs (x86_64)."),
     # Home Assistant OS appliance boards (per the alternative install page).
     TargetSeed("ha-yellow", "Home Assistant Yellow", "arm64", "uboot",
                soc="Raspberry Pi CM4", notes="HA Yellow (CM4 carrier)."),
@@ -443,6 +448,11 @@ OPERATING_SYSTEMS: list[OSSeed] = [
            homepage="https://www.microsoft.com/windows",
            summary="Microsoft Windows. Installer ISOs come with autounattend.xml "
                    "preseed so the bake yields a one-touch install image."),
+    OSSeed("macos", "macOS", "Apple", "desktop",
+           homepage="https://www.apple.com/macos/",
+           summary="Apple macOS. Installer downloads (InstallAssistant / IPSW) "
+                   "are gated, so URLs are placeholders; the macos salt formula "
+                   "applies locale, users and packages on first boot."),
 ]
 
 RELEASES: list[ReleaseSeed] = [
@@ -499,6 +509,10 @@ RELEASES: list[ReleaseSeed] = [
     # autounattend.xml so the bake produces a one-touch install ISO.
     ReleaseSeed("windows", "11", "stable", codename="24H2", is_default=True),
     ReleaseSeed("windows", "10", "stable", codename="22H2"),
+    # macOS — Apple's installer downloads are version-gated, so URLs are
+    # placeholders. The macos salt formula does the on-first-boot config.
+    ReleaseSeed("macos", "15", "stable", codename="Sequoia"),
+    ReleaseSeed("macos", "26", "stable", codename="Tahoe", is_default=True),
 ]
 
 
@@ -769,6 +783,16 @@ def _images() -> list[ImageSeed]:
             rows.append(ImageSeed(
                 "windows", win_release, "stable", target, "",
                 _WINDOWS_ISO.format(release=win_release), "iso",
+            ))
+
+    # macOS — no public direct installer URL (InstallAssistant / IPSW are
+    # gated), so the source is a placeholder pointing at the macOS page; the
+    # macos salt formula does the real work on first boot.
+    for mac_release in ("15", "26"):
+        for target in ("mac-apple-silicon", "mac-intel"):
+            rows.append(ImageSeed(
+                "macos", mac_release, "stable", target, "",
+                "https://www.apple.com/macos/", "img",
             ))
 
     # RaspiOS — one image per arm64 variant per dated release; three Pi

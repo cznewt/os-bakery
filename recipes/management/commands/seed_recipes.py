@@ -373,6 +373,38 @@ RECIPES: list[dict[str, Any]] = [
              ]},
         ],
     },
+    {
+        "slug": "macos-workstation",
+        "name": "macOS · Workstation",
+        "summary": "macOS with the macos salt formula — locale, default user, "
+                   "and packages applied on first boot. Installer media is "
+                   "gated, so the upstream image is a placeholder.",
+        "os_slug": "macos",
+        "hardware_slugs": ["mac-apple-silicon", "mac-intel"],
+        "version": "1.0.0",
+        "salt_states": ["macos"],
+        "pillar_overrides": {"variant": "desktop", "role": "macos-workstation"},
+        "options": [
+            {"key": "hostname", "label": "Computer name", "kind": "string",
+             "required": True, "default": "mac-1", "sort_order": 10},
+            {"key": "user_name", "label": "User account", "kind": "string",
+             "required": True, "default": "newt", "sort_order": 20},
+            {"key": "user_password", "label": "User password",
+             "kind": "secret", "required": True, "sort_order": 30},
+            {"key": "locale", "label": "Locale", "kind": "choice",
+             "default": "en_US", "sort_order": 40,
+             "choices": [
+                 {"value": "en_US", "label": "English (United States)"},
+                 {"value": "en_GB", "label": "English (United Kingdom)"},
+                 {"value": "cs_CZ", "label": "Czech (Czechia)"},
+                 {"value": "de_DE", "label": "German (Germany)"},
+                 {"value": "fr_FR", "label": "French (France)"},
+             ]},
+            {"key": "timezone", "label": "Time zone", "kind": "string",
+             "default": "Europe/Prague", "sort_order": 50,
+             "help_text": "IANA tz name, e.g. `Europe/Prague`."},
+        ],
+    },
     # ---- ESPHome — firmware images for ESP32 / ESP8266 devices ----
     # Each recipe maps to a packages/device/<vendor>/<device>.yaml file in
     # https://github.com/Craftama/esphome-models (cloned into BUILD_WORK_ROOT
