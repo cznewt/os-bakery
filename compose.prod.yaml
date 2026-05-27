@@ -211,11 +211,8 @@ services:
       - .env
     environment:
       <<: *django-env
-      # Use the gedu salt modules as the file_roots baked into images.
-      SALT_STATES_ROOT: /srv/gedu-salt
     volumes:
       - build-work:/app/storage/work
-      - /opt/os-bakery/gedu-salt-states:/srv/gedu-salt:ro
       # Share the host devtmpfs so loopback partition nodes (loop0pN) are
       # visible for batocera/x86 image bakes (same fix as the ARM worker).
       - /dev:/dev
@@ -251,10 +248,8 @@ services:
       - .env
     environment:
       <<: *django-env
-      SALT_STATES_ROOT: /srv/gedu-salt
     volumes:
       - build-work:/app/storage/work
-      - /opt/os-bakery/gedu-salt-states:/srv/gedu-salt:ro
       # Share the host's live devtmpfs so loopback partition nodes (loop0pN),
       # created by host udev after `losetup -P`, are visible to the in-process
       # ARM bake. Without this, the container's private /dev tmpfs never gets

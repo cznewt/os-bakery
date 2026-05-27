@@ -215,7 +215,12 @@ def _build_effective_model(build: BuildRequest) -> dict:
 
 
 def _write_pillar(ctx: BuildContext) -> None:
-    """Materialize the effective model as the build's pillar + persist it."""
+    """Materialize the build's pillar_roots + persist the effective model.
+
+    When the gedu pillar_roots are vendored (SALT_PILLAR_ROOT), bake them
+    verbatim — their top.sls + fragments drive per-node pillar via the minion
+    id we set. Otherwise generate a minimal top + effective-model pillar.
+    """
     build = ctx.build
     rv = build.recipe_version
 
@@ -224,10 +229,19 @@ def _write_pillar(ctx: BuildContext) -> None:
     build.effective_model = pillar
     build.save(update_fields=["effective_model"])
 
-    (ctx.pillar_path / "top.sls").write_text(
-        yaml.safe_dump({"base": {"*": [build.recipe_version.recipe.slug]}})
-    )
-    (ctx.pillar_path / f"{rv.recipe.slug}.sls").write_text(yaml.safe_dump(pillar))
+    pillar_root = Path(settings.SALT_PILLAR_ROOT)
+    vendored = pillar_root.is_dir() and any(pillar_root.rglob("*.sls"))
+    if vendored:
+        for f in pillar_root.rglob("*"):
+            if f.is_file():
+                dst = ctx.pillar_path / f.relative_to(pillar_root)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dst)
+    else:
+        (ctx.pillar_path / "top.sls").write_text(
+            yaml.safe_dump({"base": {"*": [rv.recipe.slug]}})
+        )
+        (ctx.pillar_path / f"{rv.recipe.slug}.sls").write_text(yaml.safe_dump(pillar))
 
 
 def _write_top(ctx: BuildContext) -> None:

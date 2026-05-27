@@ -293,8 +293,21 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path, apply: list[str]) -
                          "--local", "--state-output=mixed", "--retcode-passthrough",
                          "state.apply", state],
                         check=False, capture=True)
-            _emit_cmd(build, "salt-apply", f"salt-call --local state.apply {state}", cp)
-            ok = ok and getattr(cp, "returncode", 1) == 0
+            rc = getattr(cp, "returncode", 1)
+            out = ((cp.stdout or "") + (cp.stderr or "")).strip()
+            if rc < 0 and not out:
+                # Killed by a signal at startup (no output) — almost always a
+                # custom grain/module probing hardware absent in the bake chroot.
+                _emit(build, "salt-apply",
+                      f"state.apply {state}: salt-call killed (signal {-rc}) during "
+                      "grain/module load — likely a custom grain probing hardware "
+                      "not present in the bake chroot. This formula applies "
+                      "on-device at first boot (custom.sh → "
+                      "/userdata/system/opt/salt/run/apply-*.log), not at bake.",
+                      level="warning", returncode=rc, state=state)
+            else:
+                _emit_cmd(build, "salt-apply", f"salt-call --local state.apply {state}", cp)
+            ok = ok and rc == 0
         if ok:
             # States applied at bake → first-boot hook skips re-applying.
             (userdata / "system" / ".osbakery-provisioned").write_text("baked\n")

@@ -52,3 +52,8 @@ coverage.xml
 
 # Vendored batocera pacman packages (large prebuilt binaries) — synced from ~/work/batocera, bundled into the worker image
 packages/batocera/
+
+# Vendored gedu salt file_roots/pillar_roots (copied at build time)
+salt/vendor/states/
+salt/vendor/pillar/
+!salt/vendor/*/.gitkeep

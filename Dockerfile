@@ -32,7 +32,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DJANGO_SETTINGS_MODULE=osbakery.settings
+    DJANGO_SETTINGS_MODULE=osbakery.settings \
+    # Vendored gedu salt file_roots + pillar_roots (scripts/vendor-salt-states.sh).
+    SALT_STATES_ROOT=/app/salt/vendor/states \
+    SALT_PILLAR_ROOT=/app/salt/vendor/pillar
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
