@@ -22,7 +22,7 @@ TENANT = {"slug": "test", "name": "Test Lab",
 # (slug, name, parameters, tags)
 CLUSTERS = [
     ("test-arcade", "Test Arcade LAN", {
-        "salt": {"master": "salt.test.lan"},
+        "salt": {"master": {"host": "salt.test.lan"}},
         "alloy": {"endpoint": "https://alloy.test.lan/loki/api/v1/push"},
         "batocera": {"boot_to_arcade": True,
                      "share_host": "nas.test.lan",
@@ -30,14 +30,14 @@ CLUSTERS = [
         "zerotier": {"network": "8056c2e21c000001"},
     }, ["test", "retro"]),
     ("test-kube", "Test Kubernetes", {
-        "salt": {"master": "salt.test.lan"},
+        "salt": {"master": {"host": "salt.test.lan"}},
         "linux": {"timezone": "Europe/Prague"},
         "kubernetes": {"api_endpoint": "https://kube.test.lan:6443",
                        "kubeadm_token": "abcdef.0123456789abcdef",
                        "pod_cidr": "10.244.0.0/16"},
     }, ["test", "infra"]),
     ("test-fleet", "Test Salt Fleet", {
-        "salt": {"master": "salt.test.lan", "mine_interval": 60},
+        "salt": {"master": {"host": "salt.test.lan"}, "mine_interval": 60},
         "linux": {"timezone": "Europe/Prague",
                   "packages": ["htop", "vim", "curl"]},
     }, ["test", "infra"]),
