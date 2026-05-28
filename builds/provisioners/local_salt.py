@@ -268,12 +268,26 @@ def _stage_salt(ctx: "BuildContext", rootfs: Path) -> None:
     # top.sls shipped in the states tree.
     shutil.copy2(ctx.top_path, srv_salt / "top.sls")
     # Give the chroot working DNS for the salt bootstrap / package install.
+    # Ubuntu/Debian cloud images symlink /etc/resolv.conf at a systemd-resolved
+    # stub (../run/systemd/resolve/stub-resolv.conf) that dangles inside the
+    # chroot, so a plain copy lands nowhere and apt/curl can't resolve. Replace
+    # it with a real file. Skip the host's docker-embedded resolver (127.x,
+    # unreachable from the chroot's resolver path) and fall back to public DNS.
+    nameservers: list[str] = []
+    try:
+        for line in Path("/etc/resolv.conf").read_text().splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == "nameserver" \
+                    and not parts[1].startswith("127."):
+                nameservers.append(parts[1])
+    except OSError:
+        pass
+    nameservers = nameservers or ["1.1.1.1", "8.8.8.8"]
     resolv = rootfs / "etc/resolv.conf"
-    if not resolv.exists() or resolv.stat().st_size == 0:
-        try:
-            shutil.copy2("/etc/resolv.conf", resolv)
-        except OSError:
-            pass
+    resolv.parent.mkdir(parents=True, exist_ok=True)
+    if resolv.is_symlink() or resolv.exists():
+        resolv.unlink()
+    resolv.write_text("".join(f"nameserver {ns}\n" for ns in nameservers))
 
 
 # Masterless salt-call. Salt isn't in Debian/raspios default repos, so we add

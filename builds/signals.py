@@ -18,18 +18,21 @@ def route_queue_for_build(build: BuildRequest) -> str:
     Three workers subscribe to distinct queues (see compose.yaml):
 
       builds-esphome      — ESPHome firmware compile (esphome OS).
-      builds-packer-arm   — ARM bakes via packer-arm-tools chroot+qemu.
-      builds-packer       — everything else: x86 PCs, VMs, generic-arm64
-                            cloud images, the catch-all.
+      builds-packer-arm   — ALL arm64/armhf bakes. Baking an arm rootfs
+                            chroots in and runs the guest's own binaries under
+                            qemu-*-static, which only this worker ships — so
+                            pc-arm64 (UEFI) and arm64 cloud images need it just
+                            like a Pi / uboot board.
+      builds-packer       — everything else: x86 PCs, VMs, the catch-all.
     """
     os_slug = build.recipe_version.recipe.operating_system.slug
     if os_slug == "esphome":
         return "builds-esphome"
     target = build.hardware_target
     arch_slug = target.architecture.slug
-    if arch_slug in {"arm64", "armhf"} and target.boot_method in {"rpi", "uboot", "custom"}:
-        # Pi family, BeagleBone, Jetson, retro handhelds, AYN Odin — all
-        # need chroot+qemu via packer-arm-tools.
+    if arch_slug in {"arm64", "armhf"}:
+        # Boot method is irrelevant — the chroot salt-call exec's arm binaries
+        # under qemu emulation, available only on the ARM worker.
         return "builds-packer-arm"
     return "builds-packer"
 
