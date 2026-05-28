@@ -298,10 +298,13 @@ set -ex
 export DEBIAN_FRONTEND=noninteractive
 if ! command -v salt-call >/dev/null 2>&1; then
   apt-get update
-  apt-get install -y --no-install-recommends curl ca-certificates
+  apt-get install -y --no-install-recommends curl ca-certificates gnupg
   install -d -m 0755 /etc/apt/keyrings
+  # The SaltProject key is ASCII-armored; apt's signed-by with a .pgp keyring
+  # wants a binary (dearmored) keyring, else it rejects it as an "unsupported
+  # filetype" and the repo is treated as unsigned. Dearmor on the way in.
   curl -fsSL https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public \
-    -o /etc/apt/keyrings/salt-archive-keyring.pgp
+    | gpg --dearmor -o /etc/apt/keyrings/salt-archive-keyring.pgp
   curl -fsSL https://github.com/saltstack/salt-install-guide/releases/latest/download/salt.sources \
     -o /etc/apt/sources.list.d/salt.sources
   apt-get update
