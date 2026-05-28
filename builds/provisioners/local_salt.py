@@ -415,7 +415,14 @@ def provision(ctx: "BuildContext") -> bool:
             ["chroot", str(rootfs), "/bin/sh", "-ec", _CHROOT_SALT_SCRIPT],
             text=True, capture_output=True,
         )
-        tail = ((proc.stdout or "") + (proc.stderr or ""))[-4000:]
+        # Keep the salt highstate result (stdout: state table + Summary) as the
+        # primary tail; append only a short stderr tail so apt/log noise doesn't
+        # truncate the run result away.
+        so = (proc.stdout or "").strip()
+        se = (proc.stderr or "").strip()
+        tail = so[-4000:]
+        if se:
+            tail += "\n\n---- stderr ----\n" + se[-1500:]
         if proc.returncode != 0:
             _emit(build, "salt", "Masterless salt-call failed in chroot.",
                   level="error", returncode=proc.returncode, output_tail=tail)

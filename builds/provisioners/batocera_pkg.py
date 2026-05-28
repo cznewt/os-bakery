@@ -76,12 +76,34 @@ def _free_mib(path: Path) -> tuple[int, int]:
 
 
 def _emit_cmd(build, phase, label, cp) -> None:
-    """Emit a command result with its captured stdout/stderr tail."""
-    out = ((getattr(cp, "stdout", "") or "") + (getattr(cp, "stderr", "") or "")).strip()
+    """Emit a command result with its captured output.
+
+    salt-call writes the state-result table + ``Summary for local`` to STDOUT
+    and its ``[ERROR] …`` logging (e.g. the benign batocera-settings-get probes
+    that fail in the bake chroot) to STDERR. Keep stdout as the primary tail so
+    the actual run result is visible, with only a short stderr tail appended —
+    otherwise a flood of repeated stderr lines truncates the summary away.
+    """
+    so = (getattr(cp, "stdout", "") or "").strip()
+    se = (getattr(cp, "stderr", "") or "").strip()
     rc = getattr(cp, "returncode", 0)
+    parts = []
+    if so:
+        parts.append(so[-4000:])
+    if se:
+        # Collapse the repeated identical [ERROR] lines so they don't drown the
+        # result, then keep a short tail.
+        seen, dedup = set(), []
+        for ln in se.splitlines():
+            key = ln.strip()
+            if key in seen and key.startswith("[ERROR"):
+                continue
+            seen.add(key)
+            dedup.append(ln)
+        parts.append("---- stderr ----\n" + "\n".join(dedup)[-1500:])
     _emit(build, phase, f"{label} (rc={rc})",
           level="warning" if rc else "info",
-          returncode=rc, output_tail=out[-2000:])
+          returncode=rc, output_tail="\n\n".join(parts))
 
 
 def _write_minion_conf(ctx: "BuildContext", system: Path) -> None:
