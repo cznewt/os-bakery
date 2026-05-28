@@ -100,6 +100,7 @@ RUN apt-get update \
         exfatprogs \
         parted \
         gdisk \
+        cloud-guest-utils \
         sudo \
     && rm -rf /var/lib/apt/lists/*
 
@@ -152,6 +153,7 @@ RUN apt-get update \
         xz-utils gzip unzip zip \
         qemu-utils qemu-user-static binfmt-support \
         kpartx parted gdisk dosfstools e2fsprogs exfatprogs libarchive-tools \
+        cloud-guest-utils \
         sudo rsync zerofree libcap2-bin udev \
     && rm -rf /var/lib/apt/lists/*
 

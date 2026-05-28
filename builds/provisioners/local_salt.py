@@ -107,13 +107,17 @@ def _is_qcow2(path: Path) -> bool:
 _LOOP_QCOW2: dict[str, tuple[Path, Path]] = {}
 
 
-def _attach_loop(img: Path, ctx: "BuildContext | None" = None) -> tuple[str, list[Path]]:
+def _attach_loop(img: Path, ctx: "BuildContext | None" = None,
+                 grow_gib: int = 0) -> tuple[str, list[Path]]:
     """losetup -P the image, then wait for partition nodes to materialise.
 
     qcow2 images (Ubuntu/Debian cloud-img, HAOS .qcow2.xz) have no raw
     partition table for losetup to scan, so convert to a raw sibling first and
     attach that; _detach_loop repacks the raw back into the original qcow2 on
-    teardown. Returns (loop_device, [partition_paths]). Raises if none appear.
+    teardown. ``grow_gib`` enlarges the backing file by that many GiB before
+    attaching so a later growpart/resize2fs can expand the rootfs (cloud images
+    ship a tiny rootfs that can't fit a bake-time salt install). Returns
+    (loop_device, [partition_paths]). Raises if none appear.
     """
     attach = img
     raw: Path | None = None
@@ -124,6 +128,12 @@ def _attach_loop(img: Path, ctx: "BuildContext | None" = None) -> tuple[str, lis
                   "Source is qcow2 — converting to raw to loop-mount.")
         _sh(["qemu-img", "convert", "-O", "raw", str(img), str(raw)])
         attach = raw
+    if grow_gib:
+        if ctx is not None:
+            _emit(ctx.build, "prepare",
+                  f"Growing image by {grow_gib} GiB headroom for the bake-time "
+                  f"salt install.")
+        _sh(["truncate", "-s", f"+{grow_gib}G", str(attach)])
     lo = _sh(["losetup", "-f", "-P", "--show", str(attach)], capture=True).stdout.strip()
     if raw is not None:
         _LOOP_QCOW2[lo] = (raw, img)
@@ -150,6 +160,35 @@ def _detach_loop(lo: str) -> None:
         raw, original = entry
         _sh(["qemu-img", "convert", "-O", "qcow2", str(raw), str(original)])
         raw.unlink(missing_ok=True)
+
+
+def _grow_to_fill(lo: str, part: Path, ctx: "BuildContext | None" = None) -> None:
+    """Grow ``part`` (an ext2/3/4 rootfs) into the free space added by
+    _attach_loop(grow_gib=…). growpart relocates the GPT backup header and
+    extends the partition; resize2fs then grows the filesystem. Best-effort —
+    a layout with no trailing free space (root not last) just no-ops.
+    """
+    fstype = _sh(["blkid", "-o", "value", "-s", "TYPE", str(part)],
+                 check=False, capture=True).stdout.strip()
+    if fstype not in {"ext2", "ext3", "ext4"}:
+        if ctx is not None:
+            _emit(ctx.build, "grow",
+                  f"root {part.name} is {fstype or '?'} (not ext*) — skipping grow.",
+                  level="warning")
+        return
+    partnum = part.name.rsplit("p", 1)[-1]
+    gp = _sh(["growpart", lo, partnum], check=False, capture=True)
+    if ctx is not None:
+        _emit(ctx.build, "grow", f"growpart {lo} {partnum}: "
+              f"{(gp.stdout or gp.stderr or '').strip()[:200] or 'ok'}")
+    _sh_optional(["partprobe", lo])
+    _sh_optional(["udevadm", "settle", "--timeout=5"])
+    _sh(["e2fsck", "-fy", str(part)], check=False)
+    _sh(["resize2fs", str(part)], check=False)
+    if ctx is not None:
+        mib = int(_sh(["blockdev", "--getsize64", str(part)],
+                      check=False, capture=True).stdout.strip() or "0") // (1024 * 1024)
+        _emit(ctx.build, "grow", f"rootfs {part.name} now {mib} MiB.")
 
 
 def _classify_partitions(parts: list[Path]) -> tuple[Path, Path | None]:
@@ -337,8 +376,12 @@ def provision(ctx: "BuildContext") -> bool:
     lo: str | None = None
     mounted: list[Path] = []
     try:
-        lo, parts = _attach_loop(ctx.target_image, ctx)
+        lo, parts = _attach_loop(ctx.target_image, ctx, grow_gib=4)
         root_part, boot_part = _classify_partitions(parts)
+        # Cloud images ship a ~2 GiB rootfs (designed to growpart on first
+        # boot) — too small for a bake-time salt install. Grow it now into the
+        # 4 GiB headroom added above.
+        _grow_to_fill(lo, root_part, ctx)
         _mount(str(root_part), rootfs)
         mounted.append(rootfs)
         if boot_part is not None:
