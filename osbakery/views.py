@@ -927,6 +927,80 @@ def sync_base_image(request: HttpRequest, pk: int) -> HttpResponse:
     return redirect("base_images")
 
 
+def _declared_zerotier_network_ids(node) -> list[str]:
+    """Network ids declared for a node (cluster ⊕ node params), de-duped.
+
+    Accepts the per-entry network key as ``network_id`` (preferred), ``network``,
+    or the legacy ``id`` — mirroring ``splice_zerotier_identities``.
+    """
+    from tenants.models import _deep_merge
+
+    params = _deep_merge(node.cluster.parameters or {}, node.parameters or {})
+    nets = (params.get("zerotier") or {}).get("networks") or []
+    ids: list[str] = []
+    for entry in nets:
+        if not isinstance(entry, dict):
+            continue
+        nid = entry.get("network_id") or entry.get("network") or entry.get("id")
+        if nid and str(nid) not in ids:
+            ids.append(str(nid))
+    return ids
+
+
+@require_POST
+def generate_zerotier_identity(request: HttpRequest, pk: int) -> HttpResponse:
+    """Prepopulate ZeroTier identities for a node's declared networks.
+
+    Runs ``zerotier-idtool generate`` per network and upserts a
+    :class:`tenants.models.ZerotierIdentity`. By default fills only networks that
+    lack an identity; ``network_id=<id>`` targets one network and ``force=1``
+    regenerates an existing one.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster"), pk=pk)
+    from tenants.models import ZerotierIdentity
+    from tenants.zerotier import IdtoolError, generate_identity
+
+    target = (request.POST.get("network_id") or "").strip()
+    force = request.POST.get("force") == "1"
+    net_ids = [target] if target else _declared_zerotier_network_ids(node)
+    if not net_ids:
+        messages.warning(
+            request,
+            f"No ZeroTier networks declared on {node.slug} — add "
+            "zerotier.networks to the cluster or node parameters first.",
+        )
+        return redirect("node_detail", pk=pk)
+
+    made = kept = failed = 0
+    for nid in net_ids:
+        existing = ZerotierIdentity.objects.filter(node=node, network_id=nid).first()
+        if existing and existing.member_id and not (force or target):
+            kept += 1
+            continue
+        try:
+            ident = generate_identity()
+        except IdtoolError as exc:
+            failed += 1
+            messages.error(request, f"{nid}: {exc}")
+            continue
+        ZerotierIdentity.objects.update_or_create(
+            node=node, network_id=nid,
+            defaults={
+                "member_id": ident["member_id"],
+                "public_key": ident["public_key"],
+                "secret_key": ident["secret_key"],
+            },
+        )
+        made += 1
+
+    if made or kept:
+        summary = f"ZeroTier identities — generated {made}, kept {kept} existing"
+        if failed:
+            summary += f", {failed} failed"
+        messages.success(request, summary + ".")
+    return redirect("node_detail", pk=pk)
+
+
 # ---------------------------------------------------------------------------
 # Bake — role-template recipe picker + per-recipe form
 # ---------------------------------------------------------------------------
@@ -1360,6 +1434,17 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
     builds = list(
         node.build_requests.select_related("artifact").order_by("-queued_at")[:10]
     )
+
+    # ZeroTier: declared networks ⊕ prepopulated identities (orphan identities
+    # for no-longer-declared networks are still surfaced so they can be cleaned).
+    zt_identities = {i.network_id: i for i in node.zerotier_identities.all()}
+    zt_network_ids = _declared_zerotier_network_ids(node)
+    zt_rows = [{"network_id": nid, "identity": zt_identities.get(nid)}
+               for nid in zt_network_ids]
+    for nid, ident in zt_identities.items():
+        if nid not in zt_network_ids:
+            zt_rows.append({"network_id": nid, "identity": ident, "orphan": True})
+
     return render(request, "node_detail.html", {
         "node": node,
         "image_yaml": image_yaml,
@@ -1369,6 +1454,7 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "node_params_yaml": node_yaml,
         "tags_csv": ", ".join(node.tags or []),
         "builds": builds,
+        "zt_rows": zt_rows,
         **_node_form_options(),
     })
 

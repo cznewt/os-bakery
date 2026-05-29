@@ -67,6 +67,24 @@ RUN DJANGO_SECRET_KEY=build-time-dummy DATABASE_URL=sqlite:////tmp/build.sqlite3
 # ──────────────────────────────────────────────────────────────────────────────
 FROM base AS web
 
+# zerotier-idtool (ships with zerotier-one) — the "prepopulate ZeroTier
+# identity" node action shells out to it to generate per-network
+# identity.secret/.public. We only need the binary, not the running daemon, so
+# policy-rc.d blocks the postinst from starting the service at build time. The
+# armored .asc key is used directly via signed-by (no gnupg needed).
+RUN . /etc/os-release \
+    && install -d /usr/share/keyrings \
+    && curl -fsSL https://download.zerotier.com/debian/zerotier.asc \
+        -o /usr/share/keyrings/zerotier.asc \
+    && echo "deb [signed-by=/usr/share/keyrings/zerotier.asc] https://download.zerotier.com/debian/${VERSION_CODENAME} ${VERSION_CODENAME} main" \
+        > /etc/apt/sources.list.d/zerotier.list \
+    && printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
+    && chmod +x /usr/sbin/policy-rc.d \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends zerotier-one \
+    && rm -f /usr/sbin/policy-rc.d \
+    && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8000
 
 ENV GUNICORN_WORKERS=4 \

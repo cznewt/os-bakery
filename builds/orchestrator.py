@@ -229,6 +229,9 @@ def _build_effective_model(build: BuildRequest) -> dict:
                      f"/{build.node.slug}" if build.node_id else None),
         },
     })
+    if build.node_id is not None:
+        from tenants.models import splice_zerotier_identities
+        model = splice_zerotier_identities(model, build.node)
     return model
 
 

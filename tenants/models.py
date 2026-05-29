@@ -129,6 +129,72 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def splice_zerotier_identities(model: dict, node) -> dict:
+    """Splice a node's prepopulated ZeroTier identities into the pillar.
+
+    Reads ``model['zerotier']['networks']`` (declared at cluster/node level)
+    and, for each network the node has a generated :class:`ZerotierIdentity`
+    for, emits the per-network contract the salt formula consumes::
+
+        zerotier:
+          networks:
+            - network_id: a57fdfffb0c77a31   # 16-hex network to join
+              name: craftama-infrastructure  # optional label (kept as-is)
+              id: 8a1bd2cf42                  # 10-hex member address
+              public_key: "8a1bd2cf42:0:…"   # identity.public
+              secret_key: "8a1bd2cf42:0:…:…" # identity.secret (sensitive)
+
+    The network identifier is normalised to ``network_id`` (accepting a legacy
+    ``id``/``network`` key on input). Networks without a generated identity are
+    left as ``{network_id, name}`` — the formula falls back to a self-generated
+    identity on first boot ("if provided").
+    """
+    zt = model.get("zerotier")
+    if not isinstance(zt, dict):
+        return model
+    nets = zt.get("networks")
+    if not isinstance(nets, list):
+        return model
+
+    by_net = {i.network_id: i for i in node.zerotier_identities.all()}
+    out: list = []
+    for entry in nets:
+        if not isinstance(entry, dict):
+            out.append(entry)
+            continue
+        e = dict(entry)
+        # Network identifier: prefer explicit network_id/network, else the
+        # legacy `id` key (which historically held the network id).
+        if e.get("network_id"):
+            nid = e.pop("network_id")
+        elif e.get("network"):
+            nid = e.pop("network")
+        else:
+            nid = e.pop("id", None)
+        ident = by_net.get(nid)
+        ordered: dict = {}
+        if nid is not None:
+            ordered["network_id"] = nid
+        if "name" in e:
+            ordered["name"] = e["name"]
+        if ident and ident.member_id:
+            ordered["id"] = ident.member_id
+            if ident.public_key:
+                ordered["public_key"] = ident.public_key
+            if ident.secret_key:
+                ordered["secret_key"] = ident.secret_key
+        for key, value in e.items():
+            if key not in ordered and key != "name":
+                ordered[key] = value
+        out.append(ordered)
+
+    new_zt = dict(zt)
+    new_zt["networks"] = out
+    new_model = dict(model)
+    new_model["zerotier"] = new_zt
+    return new_model
+
+
 class Node(TimestampedModel):
     """A managed unit we bake an image for.
 
@@ -231,4 +297,98 @@ class Node(TimestampedModel):
             "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
             "preset": self.preset.slug,
         }})
-        return model
+        return splice_zerotier_identities(model, self)
+
+
+class Integration(TimestampedModel):
+    """Endpoint + credentials for an external service os-bakery talks to.
+
+    For ZeroTier this is the controller / ZeroTier Central API used to
+    pre-authorize a node's prepopulated member id onto a network. Tenant-scoped
+    so each tenant carries its own controller + token; ``tenant=None`` is a
+    shared/global integration.
+    """
+
+    class Type(models.TextChoices):
+        ZEROTIER = "zerotier", _("ZeroTier controller / Central")
+
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="integrations",
+        null=True, blank=True,
+        help_text="Owning tenant; leave blank for a shared/global integration.",
+    )
+    type = models.CharField(max_length=32, choices=Type.choices)
+    name = models.CharField(max_length=120)
+    url = models.URLField(
+        help_text="API base URL — ZeroTier Central (https://my.zerotier.com) "
+                  "or a self-hosted controller (https://<host>:9993).",
+    )
+    token = models.CharField(
+        max_length=255, blank=True,
+        help_text="API token used to authorize calls. Sensitive.",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["tenant__name", "type", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "type", "name"],
+                name="uniq_integration_tenant_type_name",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        scope = self.tenant.slug if self.tenant_id else "global"
+        return f"{self.get_type_display()} · {self.name} ({scope})"
+
+
+class ZerotierIdentity(TimestampedModel):
+    """A prepopulated ZeroTier identity for one node on one network.
+
+    Produced by ``zerotier-idtool generate`` (the secret/public keypair) and
+    ``getpublic`` (the 10-hex member address). Spliced into the bake pillar by
+    :func:`splice_zerotier_identities` as
+    ``zerotier.networks[].{id, public_key, secret_key}`` so the node boots with
+    a known member address — which can be pre-authorized on the controller via
+    an :class:`Integration`.
+    """
+
+    node = models.ForeignKey(
+        Node,
+        on_delete=models.CASCADE,
+        related_name="zerotier_identities",
+    )
+    network_id = models.CharField(
+        max_length=24,
+        help_text="16-hex ZeroTier network id this identity joins.",
+    )
+    member_id = models.CharField(
+        max_length=16, blank=True,
+        help_text="10-hex node/member address (identity.public prefix). "
+                  "Emitted to pillar as zerotier.networks[].id.",
+    )
+    public_key = models.TextField(
+        blank=True,
+        help_text="identity.public contents (zerotier-idtool getpublic).",
+    )
+    secret_key = models.TextField(
+        blank=True,
+        help_text="identity.secret contents (zerotier-idtool generate). Sensitive.",
+    )
+
+    class Meta:
+        ordering = ["node", "network_id"]
+        verbose_name = "ZeroTier identity"
+        verbose_name_plural = "ZeroTier identities"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["node", "network_id"],
+                name="uniq_zt_identity_node_network",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.node.slug}@{self.network_id} → {self.member_id or '(ungenerated)'}"

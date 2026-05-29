@@ -136,6 +136,54 @@
       </section>
 
       <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">
+          <span>ZeroTier identities
+            <span class="text-stone-400 font-mono text-xs">prepopulated per network → pillar zerotier.networks[].&#123;id, public_key, secret_key&#125;</span>
+          </span>
+          {% if zt_rows %}
+          <form method="post" action="/nodes/{{ node.id }}/zerotier/generate/">
+            {% csrf_token %}
+            <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">⚡ Generate missing</button>
+          </form>
+          {% endif %}
+        </div>
+        {% if zt_rows %}
+        <table class="w-full text-sm">
+          <thead class="text-[10px] uppercase tracking-wider font-mono text-stone-400">
+            <tr class="border-b border-stone-100">
+              <th class="text-left px-5 py-2 font-medium">network_id</th>
+              <th class="text-left px-5 py-2 font-medium">member id</th>
+              <th class="text-left px-5 py-2 font-medium">identity</th>
+              <th class="px-5 py-2"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            {% for r in zt_rows %}
+            <tr>
+              <td class="px-5 py-2 font-mono text-stone-700">{{ r.network_id }}{% if r.orphan %} <span class="text-amber-600 text-xs">(not declared)</span>{% endif %}</td>
+              <td class="px-5 py-2 font-mono text-stone-700">{% if r.identity and r.identity.member_id %}{{ r.identity.member_id }}{% else %}<span class="text-stone-400">—</span>{% endif %}</td>
+              <td class="px-5 py-2">
+                {% if r.identity and r.identity.member_id %}<span class="text-xs text-emerald-700">✓ secret + public stored</span>
+                {% else %}<span class="text-xs text-stone-400">self-generated on first boot</span>{% endif %}
+              </td>
+              <td class="px-5 py-2 text-right">
+                <form method="post" action="/nodes/{{ node.id }}/zerotier/generate/"{% if r.identity and r.identity.member_id %} onsubmit="return confirm('Regenerate identity for {{ r.network_id }}? The member id changes and any controller authorization must be redone.');"{% endif %}>
+                  {% csrf_token %}
+                  <input type="hidden" name="network_id" value="{{ r.network_id }}">
+                  {% if r.identity and r.identity.member_id %}<input type="hidden" name="force" value="1">{% endif %}
+                  <button type="submit" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50">{% if r.identity and r.identity.member_id %}Regenerate{% else %}Generate{% endif %}</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="px-5 py-6 text-sm text-stone-500">No ZeroTier networks declared. Add <span class="font-mono text-xs">zerotier.networks</span> to the cluster or node parameters, then generate identities here.</div>
+        {% endif %}
+      </section>
+
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-stone-200 font-medium">Recent bakes <span class="text-stone-400 font-mono text-sm">({{ builds|length }})</span></div>
         <ol class="divide-y divide-stone-100">
           {% for b in builds %}
