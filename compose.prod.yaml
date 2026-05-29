@@ -47,10 +47,11 @@ x-django-env: &django-env
   AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-osbakery}
   AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
   SALT_MASTER_URL: salt-master
+  TZ: Europe/Prague
   # Bake-time salt bootstrap package URLs (pacman -U), keyed by arch. Public repo
   # — fine for bootstrap/demos/tests; the salt run then configures the private
   # repos for the rest. Bump the version here when misc-salt changes.
-  SALT_PACKAGE_URLS: '{"aarch64": "https://utils.batocera.gameedu.eu/arm64/misc-salt-3007.8-41-any.pkg.tar.zst", "x86_64": "https://utils.batocera.gameedu.eu/x64/misc-salt-3007.8-41-x86_64.pkg.tar.zst"}'
+  SALT_PACKAGE_URLS: '{"aarch64": "https://utils.batocera.gameedu.eu/arm64/misc-salt-3007.8-42-any.pkg.tar.zst", "x86_64": "https://utils.batocera.gameedu.eu/x64/misc-salt-3007.8-42-x86_64.pkg.tar.zst"}'
   # ARM bakes: enable the packer-arm-tools chroot+qemu provisioner. Presets are
   # baked into the worker-packer-arm image at /opt/packer-arm-tools/configs.
   PACKER_ARM_TOOLS_ENABLED: "true"
