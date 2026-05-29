@@ -1,14 +1,20 @@
-"""Batocera provisioner — overlay pacman packages into the userdata partition.
+"""Batocera provisioner — bootstrap-install salt from a package URL, then apply
+the salt states (which configure the repos + install the rest) and enable the
+services, all at bake.
 
-Batocera is buildroot (no apt/chroot-exec). Apps ship as pacman packages that
-overlay ``/userdata/system/`` with prebuilt per-arch binaries + a batocera
-service. So baking = mount the image's userdata (SHARE) partition and copy the
-bundled packages' ``userdata/system/`` tree in, write the salt minion config,
-and append a first-boot hook to ``custom.sh`` that installs/enables the
-services (what ``batocera-services enable`` + the package's batoexec do).
+Batocera is buildroot (no apt/chroot-exec); apps are pacman packages. So baking =
+grow + mount the image's userdata (SHARE) partition, stage the salt file_roots /
+pillar + minion config, seed salt.minion-id, then chroot into the batocera
+squashfs root and: ``pacman -U <salt-package-url>`` (so salt-call exists),
+``salt-call --local state.apply`` per pillar-keyed formula (the ``batocera``
+formula sets up the private repos; the others install alloy / zerotier / … via
+their own pkg.installed), and ``batocera-services enable`` per service. Nothing
+is deferred to first boot — the image boots fully provisioned (batocera
+auto-starts the enabled services).
 
-Packages are bundled into the worker image at $BATOCERA_PACKAGES_DIR
-(per-arch). No qemu/chroot needed — it's pure file injection.
+The salt apply uses a qemu-emulated chroot for foreign-arch (ARM) images, so the
+salt package URL + the repos it configures + DNS must be reachable from the
+worker at bake time.
 """
 
 from __future__ import annotations
@@ -30,39 +36,26 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Packages overlaid into every batocera bake, in order.
-_PACKAGES = ["misc-salt-3007.8", "misc-alloy-1.11.3"]
-# Their batocera service names (for the first-boot enable hook).
-_SERVICES = ["salt_minion", "alloy"]
+# Salt is bootstrap-installed at bake from a package URL (``pacman -U`` of
+# settings.SALT_PACKAGE_URLS[arch] or the per-build ``salt_package_url`` option)
+# so salt-call exists to apply the states. Everything else (alloy, zerotier, …)
+# is installed by those states' own pkg.installed once the salt run configures
+# the repos (the bootstrap URL is the public repo — fine for demos + tests).
+# Services we make sure are enabled after the apply (belt-and-suspenders: the
+# package batoexec + the formulas' service.running normally handle this, but the
+# batoexec's `start` may not fire cleanly in the bake chroot).
+_SERVICES = ["salt_minion", "alloy", "textfile_collector"]
 
-# Where salt lives on the (persistent) batocera userdata partition at runtime.
-_SALT_DEVICE_ROOT = "/userdata/system/opt/salt"
-
-_CUSTOM_MARKER = "# --- os-bakery provisioned (do not edit below) ---"
+# Extra SHARE headroom (MiB) for the bake-time package installs (salt + alloy +
+# zerotier + the pacman cache). The fresh batocera SHARE is tiny and self-grows
+# on first boot, so we grow it here. Tune if installs hit ENOSPC.
+_GROW_MIB = 1024
 
 
 def _emit(build, phase, message, level="info", **data):
+    # NUL (U+0000) in salt-call/pacman output is stripped centrally in
+    # BuildEvent.save() (Postgres jsonb/text can't store it).
     BuildEvent.objects.create(build=build, phase=phase, message=message, level=level, data=data)
-
-
-def _overlay(src: Path, dst: Path) -> tuple[int, int]:
-    """Merge-copy src/* into dst/ (like cp -a), preserving modes.
-
-    Returns (files_copied, bytes_copied) for the event log.
-    """
-    n_files, n_bytes = 0, 0
-    for root, _dirs, files in os.walk(src):
-        rel = Path(root).relative_to(src)
-        (dst / rel).mkdir(parents=True, exist_ok=True)
-        for f in files:
-            srcf = Path(root) / f
-            shutil.copy2(srcf, dst / rel / f)
-            n_files += 1
-            try:
-                n_bytes += srcf.stat().st_size
-            except OSError:
-                pass
-    return n_files, n_bytes
 
 
 def _free_mib(path: Path) -> tuple[int, int]:
@@ -106,181 +99,64 @@ def _emit_cmd(build, phase, label, cp) -> None:
           returncode=rc, output_tail="\n\n".join(parts))
 
 
-def _write_minion_conf(ctx: "BuildContext", system: Path) -> None:
-    """Minion config pointing at the baked-in local file_roots + pillar_roots.
-
-    With these roots present, ``salt-call --local state.apply`` (or
-    ``state.highstate``) runs the recipe's states on the device with no master.
-    """
-    opts = ctx.build.option_values or {}
-    master = getattr(settings, "SALT_MASTER_URL", "") or opts.get("salt_master", "")
-    minion_id = opts.get("minion_id") or opts.get("hostname") or ctx.build.label or f"osbakery-{ctx.build.id}"
-    conf: dict = {
-        "id": minion_id,
-        "file_roots": {"base": [f"{_SALT_DEVICE_ROOT}/states"]},
-        "pillar_roots": {"base": [f"{_SALT_DEVICE_ROOT}/pillar"]},
-        # Load custom .py modules straight from these dirs at minion startup —
-        # the batocera salt package convention (see misc-salt salt-init-minion),
-        # which we must replicate here because writing this conf pre-empts that
-        # script's own block. Custom grains (machine_model, usb_devices,
-        # batocera_resolution) and the batocera state/exec modules live here and
-        # must be present BEFORE the first state run, so file_roots `_grains`/
-        # `_modules` + saltutil.sync isn't enough on its own.
-        "module_dirs": [f"{_SALT_DEVICE_ROOT}/modules"],
-        "states_dirs": [f"{_SALT_DEVICE_ROOT}/states"],
-        "grains_dirs": [f"{_SALT_DEVICE_ROOT}/grains"],
-    }
-    if master:
-        # Master recorded for a connected minion; --local still reads the
-        # baked local roots above on demand.
-        conf["master"] = master
-    else:
-        conf["file_client"] = "local"
-    conf_dir = system / "opt/salt/conf"
-    conf_dir.mkdir(parents=True, exist_ok=True)
-    (conf_dir / "minion").write_text(
-        yaml.safe_dump(conf, default_flow_style=False, sort_keys=False)
-    )
-
-
 # Effective-model keys that are image/identity metadata, not salt formulas.
 _NON_STATE_KEYS = {"osbakery", "device", "options", "role"}
 
 
-def _available_formulas(states_root: Path) -> set[str]:
-    """Top-level salt formulas present in the states tree.
-
-    A formula is ``<name>.sls`` or ``<name>/init.sls`` — a bare directory
-    without init.sls (e.g. batocera/ holding only base/, arcade/) is NOT a
-    `state.apply <name>` target, so it's excluded.
-    """
-    out: set[str] = set()
-    if states_root.is_dir():
-        for p in states_root.iterdir():
-            if p.is_dir() and (p / "init.sls").is_file():
-                out.add(p.name)
-            elif p.suffix == ".sls" and p.stem != "top":
-                out.add(p.stem)
-    return out
-
-
-def _states_to_apply(ctx: "BuildContext", states_root: Path) -> list[str]:
-    """Salt states to apply = the pillar's top-level keys that have a matching
-    formula (e.g. pillar `batocera` → state `batocera`), preserving order.
-    """
-    avail = _available_formulas(states_root)
-    keys = [k for k in (ctx.effective_model or {})
-            if k not in _NON_STATE_KEYS and k in avail]
-    from builds.orchestrator import order_formulas
-    return order_formulas(keys)
-
-
-def _stage_salt_roots(ctx: "BuildContext", system: Path) -> tuple[int, int, list[str]]:
-    """Bake the salt states (file_roots) + rendered pillar (pillar_roots) onto
-    the userdata partition so masterless ``salt-call --local`` has them.
-
-    The baked state ``top.sls`` applies the formulas named by the pillar's
-    top-level keys (batocera / salt / alloy / …). Returns
-    (state_files, pillar_files, states_to_apply).
-    """
-    states_src = Path(settings.SALT_STATES_ROOT)
-    states_dst = system / "opt/salt/states"
-    pillar_dst = system / "opt/salt/pillar"
-
-    # Merge (don't rmtree): the batocera package overlay already placed its own
-    # custom state module at <root>/states/batocera.py — wiping the dir would
-    # delete it. The gedu .sls file_roots tree layers on top.
-    if states_src.is_dir():
-        shutil.copytree(states_src, states_dst, dirs_exist_ok=True)
-    else:
-        states_dst.mkdir(parents=True, exist_ok=True)
-
-    # State top = the pillar's top-level keys that have a matching formula.
-    apply = _states_to_apply(ctx, states_src)
-    (states_dst / "top.sls").write_text(
-        yaml.safe_dump({"base": {"*": apply}}, default_flow_style=False)
-    )
-
-    if pillar_dst.exists():
-        shutil.rmtree(pillar_dst)
-    pillar_dst.mkdir(parents=True, exist_ok=True)
-    for f in sorted(ctx.pillar_path.glob("*")):
-        if f.is_file():
-            shutil.copy2(f, pillar_dst / f.name)
-
-    n_states = sum(1 for _ in states_dst.rglob("*") if _.is_file())
-    n_pillar = sum(1 for _ in pillar_dst.rglob("*") if _.is_file())
-    return n_states, n_pillar, apply
-
-
-# Salt file_roots use leading-underscore dirs (`_grains`, `_modules`, …) that
-# normally require `saltutil.sync_*`. The batocera package instead loads .py
-# modules directly from un-underscored dirs via module_dirs/states_dirs/
-# grains_dirs (see _write_minion_conf). Copy the vendored gedu custom modules
-# into those same dirs so they load at minion startup, before the first state
-# run — merging with (not clobbering) the package's own modules.
-_EXTMOD_MAP = {
-    "_grains": "grains", "_modules": "modules", "_states": "states",
-    "_utils": "utils", "_renderers": "renderers",
-}
-
-
-def _stage_extension_modules(system: Path) -> dict[str, int]:
-    """Copy gedu custom modules from file_roots `_X/` into `<root>/X/`."""
-    states_src = Path(settings.SALT_STATES_ROOT)
-    staged: dict[str, int] = {}
-    for under, plain in _EXTMOD_MAP.items():
-        src = states_src / under
-        if not src.is_dir():
-            continue
-        dst = system / "opt" / "salt" / plain
-        dst.mkdir(parents=True, exist_ok=True)
-        n = 0
-        for f in src.glob("*.py"):
-            shutil.copy2(f, dst / f.name)
-            n += 1
-        if n:
-            staged[plain] = n
-    return staged
-
-
-def _append_custom_sh(system: Path, services: list[str], apply: list[str]) -> None:
-    """Idempotent first-boot hook: enable services, then apply the pillar-keyed
-    states masterless via ``salt-call --local state.apply <key>``.
-    """
-    custom = system / "custom.sh"
-    existing = custom.read_text() if custom.exists() else ""
-    if _CUSTOM_MARKER in existing:
-        return
-    block = [_CUSTOM_MARKER, "if [ ! -f /userdata/system/.osbakery-provisioned ]; then"]
-    block.append("  [ -x /userdata/system/bin/salt-init-minion ] && /userdata/system/bin/salt-init-minion || true")
-    for svc in services:
-        block.append(f"  batocera-services enable {svc} 2>/dev/null || true")
-        block.append(f"  batocera-services start {svc} 2>/dev/null || true")
-    # Sync the custom salt modules baked into file_roots (_grains, _modules,
-    # _states, _returners, _utils, …) into the minion's extmods cache BEFORE
-    # applying states. Custom grains (machine_model, usb_devices) load at minion
-    # startup, so without this first-boot sync the grain-dependent states would
-    # run with those grains absent. Runs on-device (real hardware), not at bake.
-    block.append(
-        "  /userdata/system/bin/salt-call --local saltutil.sync_all refresh=True "
-        ">> /userdata/system/opt/salt/run/sync.log 2>&1 || true"
-    )
-    # Apply each pillar-keyed state masterless (the salt-call wrapper already
-    # points at /userdata/system/opt/salt/conf, which has the local roots).
-    for state in apply:
-        block.append(
-            f"  /userdata/system/bin/salt-call --local state.apply {state} "
-            f">> /userdata/system/opt/salt/run/apply-{state}.log 2>&1 || true"
-        )
-    block.append("  touch /userdata/system/.osbakery-provisioned")
-    block.append("fi")
-    header = existing if existing.startswith("#!") else "#!/bin/bash\n" + existing
-    custom.write_text(header.rstrip() + "\n\n" + "\n".join(block) + "\n")
-    custom.chmod(0o755)
-
-
 _SARCH = {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64", "aarch64": "aarch64"}
+
+# Custom grains that probe real hardware through native libraries (libusb for
+# usb_devices, …). Salt runs every grain module at salt-call startup, so under
+# qemu-user emulation in the bake chroot these SIGILL and kill the whole run
+# before any state applies — and a SIGILL can't be caught, nor does salt's
+# grains_blacklist help (it filters output *after* the function runs). No baked
+# formula needs them (the batocera/salt/alloy states branch only on core grains
+# like os_family), and they load fine on real hardware at first boot, so we drop
+# them from the bake-time grains path only. Add a name here if a new grain
+# crashes the bake the same way.
+_BAKE_UNSAFE_GRAINS = {"batocera_resolution", "usb_devices"}
+
+# Ephemeral (chroot tmpfs/overlay) home for the bake-only salt config — never
+# lands on the persistent userdata partition, so it can't ship in the image.
+_BAKE_CONF_ROOT = "/run/osbakery-bake"
+
+
+def _write_bake_conf(root: Path, system: Path) -> tuple[str, list[str]]:
+    """Stage a bake-only minion config that excludes hardware-probing grains.
+
+    Mirrors the on-device minion conf (same file_roots / pillar_roots / module
+    dirs so states + pillar still resolve) but points ``grains_dirs`` at a
+    curated copy of the staged grains with the ``_BAKE_UNSAFE_GRAINS`` dropped,
+    and forces masterless. Written under the chroot's tmpfs so it is discarded
+    with the bake. Returns (in-chroot ``--config-dir``, excluded grain names).
+    """
+    src_conf = system / "opt/salt/conf/minion"
+    conf = yaml.safe_load(src_conf.read_text()) if src_conf.is_file() else {}
+    conf["grains_dirs"] = [f"{_BAKE_CONF_ROOT}/grains"]
+    conf["file_client"] = "local"
+    conf.pop("master", None)  # never reach for a master during the bake
+
+    base = root / _BAKE_CONF_ROOT.lstrip("/")
+    conf_dir, grains_dir = base / "conf", base / "grains"
+    conf_dir.mkdir(parents=True, exist_ok=True)
+    grains_dir.mkdir(parents=True, exist_ok=True)
+    (conf_dir / "minion").write_text(
+        yaml.safe_dump(conf, default_flow_style=False, sort_keys=False)
+    )
+
+    # The misc-salt package ships custom grains in _grains + states/_grains;
+    # copy all but the hardware-probing ones into the bake grains dir.
+    excluded: list[str] = []
+    for gd in (system / "opt/salt/_grains", system / "opt/salt/states/_grains"):
+        if not gd.is_dir():
+            continue
+        for f in sorted(gd.glob("*.py")):
+            if f.stem in _BAKE_UNSAFE_GRAINS:
+                if f.stem not in excluded:
+                    excluded.append(f.stem)
+                continue
+            shutil.copy2(f, grains_dir / f.name)
+    return f"{_BAKE_CONF_ROOT}/conf", excluded
 
 
 def _find_squashfs(boot_mnt: Path) -> Path | None:
@@ -297,14 +173,98 @@ def _find_squashfs(boot_mnt: Path) -> Path | None:
     return None
 
 
-def _apply_salt_local(ctx, build, boot_part, userdata: Path, apply: list[str]) -> None:
-    """Run `salt-call --local state.apply <key>` at bake time, capturing output.
+def _salt_pkg_url(ctx: "BuildContext", sarch: str) -> str | None:
+    """Parametrisable URL of the misc-salt package to bootstrap-install at bake:
+    the per-build ``salt_package_url`` option wins, else
+    ``settings.SALT_PACKAGE_URLS[<sarch>]`` (sarch = aarch64 / x86_64).
+    """
+    opts = ctx.build.option_values or {}
+    if opts.get("salt_package_url"):
+        return opts["salt_package_url"]
+    return (getattr(settings, "SALT_PACKAGE_URLS", {}) or {}).get(sarch)
+
+
+def _download(url: str, dest: Path) -> str | None:
+    """Fetch ``url`` → ``dest`` host-side (native, HTTP/1.1, follows redirects).
+
+    Done on the host rather than via pacman inside the chroot because pacman's
+    libcurl negotiates HTTP/2 and the stream dies mid-transfer under qemu on
+    large files. Returns an error string on failure — including a non-zstd body
+    (e.g. an auth/login HTML page from an SSO redirect) — else None.
+    """
+    import urllib.error
+    import urllib.request
+    attempts, last = 3, "no attempt"
+    for _ in range(attempts):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "osbakery-bake"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                expected = int(r.headers.get("Content-Length") or 0)
+                with open(dest, "wb") as f:
+                    shutil.copyfileobj(r, f)
+            got = dest.stat().st_size
+            if expected and got != expected:  # flaky proxy short-closed the body
+                last = f"truncated: got {got} of {expected} bytes"
+                continue
+            with open(dest, "rb") as f:
+                if f.read(4) != b"\x28\xb5\x2f\xfd":  # zstd magic
+                    last = "not a zstd archive (auth/HTML page?)"
+                    continue
+            return None
+        except (urllib.error.URLError, OSError) as exc:
+            last = str(exc)
+    return f"{last} (after {attempts} attempts)"
+
+
+def _seed_minion_id(ctx: "BuildContext", system: Path) -> str:
+    """Seed ``salt.minion-id`` into batocera.conf before the salt run so the
+    minion + alloy service pick up the right id. The repos themselves are
+    configured by the ``batocera`` formula during the apply, not here.
+    """
+    opts = ctx.build.option_values or {}
+    minion_id = (opts.get("minion_id") or opts.get("hostname")
+                 or ctx.build.label or f"osbakery-{ctx.build.id}")
+    conf = system / "batocera.conf"
+    kept = [ln for ln in (conf.read_text().splitlines() if conf.is_file() else [])
+            if not ln.startswith("salt.minion-id=")]
+    kept.append(f"salt.minion-id={minion_id}")
+    conf.write_text("\n".join(kept) + "\n")
+    return minion_id
+
+
+def _write_pillar(ctx: "BuildContext", system: Path) -> list[str]:
+    """Write the rendered pillar into the misc-salt package's pillar tree.
+
+    The package's ``pillar/top.sls`` maps the ``batocera`` pillar file to ``*``,
+    and its states ``top.sls`` is pillar-driven (applies the ``states:`` list on
+    highstate). So one ``pillar/batocera.sls`` holding the effective model's
+    state-data keys + a ``states:`` list is all the bake needs to inject; the
+    states themselves come from the package. Returns the states list.
+    """
+    model = ctx.effective_model or {}
+    data = {k: v for k, v in model.items() if k not in _NON_STATE_KEYS}
+    # batocera first (it configures the pacman repos the rest install from).
+    states = (["batocera"] if "batocera" in data else []) + \
+             [k for k in data if k != "batocera"]
+    pillar = {**data, "states": states}
+    pdir = system / "opt/salt/pillar"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "top.sls").write_text("base:\n  '*':\n    - batocera\n")
+    (pdir / "batocera.sls").write_text(
+        yaml.safe_dump(pillar, default_flow_style=False, sort_keys=False))
+    return states
+
+
+def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
+    """Install salt + apply the states in the batocera chroot at bake time.
 
     Chroots into the batocera squashfs root (overlay; only /userdata persists,
-    bound to the SHARE) and runs the bundled onedir salt-call per pillar-key
-    state, emitting each step's output into the build log.
+    bound to the SHARE), ``pacman -U`` installs misc-salt (its state tree + conf
+    come with it), then runs the bundled onedir salt-call: ``state.apply
+    batocera`` (configures the repos), then ``state.highstate`` (the pillar's
+    ``states:`` list). Output is streamed into the build log.
     """
-    if not apply or boot_part is None:
+    if boot_part is None:
         return
     guest = (getattr(getattr(ctx.build.hardware_target, "architecture", None), "slug", "") or "").lower()
     sarch = _SARCH.get(guest)
@@ -359,78 +319,111 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path, apply: list[str]) -
             pass
 
         saltcall = f"/userdata/system/bin/{sarch}/salt/salt-call"
+        env = ["/usr/bin/env", "PATH=/usr/sbin:/usr/bin:/sbin:/bin:/userdata/system/bin"]
+
+        # Bootstrap: install misc-salt from its package URL. The package owns the
+        # state tree (salt://{batocera,salt,alloy,zerotier,…}) and its install
+        # hook writes the minion conf (file_roots→states, pillar_roots→pillar) —
+        # so we install onto a clean tree (we no longer stage states, which would
+        # collide) and just supply the pillar. Fetch host-side (native, HTTP/1.1):
+        # pacman's in-chroot download negotiates HTTP/2 and the flaky proxy
+        # resets the stream under qemu on large files.
+        url = _salt_pkg_url(ctx, sarch)
+        if not url:
+            _emit(build, "salt-apply",
+                  "No salt package URL (set the `salt_package_url` option or "
+                  f"SALT_PACKAGE_URLS[{sarch}]) — cannot install salt at bake.",
+                  level="error")
+            return
+        pkg_host = userdata / "system" / "pacman" / "osbakery-salt-bootstrap.pkg.tar.zst"
+        pkg_chroot = "/userdata/system/pacman/osbakery-salt-bootstrap.pkg.tar.zst"
+        pkg_host.parent.mkdir(parents=True, exist_ok=True)
+        err = _download(url, pkg_host)
+        if err:
+            _emit(build, "salt-apply",
+                  f"Could not fetch salt package {url}: {err} — cannot install "
+                  "salt at bake.", level="error")
+            return
         _emit(build, "salt-apply",
-              f"Bake-time masterless apply (arch={sarch}) of: {', '.join(apply)}.")
+              f"Downloaded salt package ({pkg_host.stat().st_size // (1024 * 1024)} MiB) "
+              f"from {url}; installing with pacman -U.")
+        inst = ls._sh(["chroot", str(root), *env, "pacman", "-U", "--noconfirm", pkg_chroot],
+                      check=False, capture=True)
+        _emit_cmd(build, "salt-apply", f"pacman -U {pkg_chroot}", inst)
+        try:
+            pkg_host.unlink()
+        except OSError:
+            pass
+        if not (userdata / "system" / "bin" / sarch / "salt" / "salt-call").is_file():
+            _emit(build, "salt-apply",
+                  f"Installing salt from {url} did not produce {saltcall} — "
+                  "cannot apply states at bake.", level="error",
+                  returncode=getattr(inst, "returncode", 1))
+            return
+
+        # Bake-only conf from the package's minion conf, with grains_dirs pointed
+        # at a curated copy (hardware-probing grains like batocera_resolution
+        # dropped) so the aarch64 salt-call doesn't SIGILL under qemu.
+        bake_confdir, excluded = _write_bake_conf(root, userdata / "system")
+        if excluded:
+            _emit(build, "salt-apply",
+                  "Excluded hardware-probing grains from the bake chroot "
+                  f"(they SIGILL under qemu; load on-device at first boot): "
+                  f"{', '.join(excluded)}.", excluded_grains=excluded)
+
+        # Apply the batocera formula first (writes pacman.conf so the repos
+        # exist), then the pillar-driven highstate (installs + configures the
+        # rest from those repos).
         ok = True
-        for state in apply:
-            cp = ls._sh(["chroot", str(root), saltcall,
-                         "--config-dir=/userdata/system/opt/salt/conf",
-                         "--local", "--state-output=mixed", "--retcode-passthrough",
-                         "state.apply", state],
+        for sc in (["state.apply", "batocera"], ["state.highstate"]):
+            cp = ls._sh(["chroot", str(root), saltcall, f"--config-dir={bake_confdir}",
+                         "--local", "--state-output=full", "--retcode-passthrough", *sc],
                         check=False, capture=True)
             rc = getattr(cp, "returncode", 1)
             out = ((cp.stdout or "") + (cp.stderr or "")).strip()
             if rc < 0 and not out:
-                # Killed by a signal at startup (no output) — almost always a
-                # custom grain/module probing hardware absent in the bake chroot.
                 _emit(build, "salt-apply",
-                      f"state.apply {state}: salt-call killed (signal {-rc}) during "
-                      "grain/module load — likely a custom grain probing hardware "
-                      "not present in the bake chroot. This formula applies "
-                      "on-device at first boot (custom.sh → "
-                      "/userdata/system/opt/salt/run/apply-*.log), not at bake.",
-                      level="warning", returncode=rc, state=state)
+                      f"salt-call {' '.join(sc)}: killed (signal {-rc}) during "
+                      "grain/module load. Hardware-probing grains are already "
+                      f"excluded at bake ({', '.join(sorted(_BAKE_UNSAFE_GRAINS))}); "
+                      "add the offending one to _BAKE_UNSAFE_GRAINS.",
+                      level="warning", returncode=rc)
             else:
-                _emit_cmd(build, "salt-apply", f"salt-call --local state.apply {state}", cp)
+                _emit_cmd(build, "salt-apply", "salt-call --local " + " ".join(sc), cp)
             ok = ok and rc == 0
-        if ok:
-            # States applied at bake → first-boot hook skips re-applying.
-            (userdata / "system" / ".osbakery-provisioned").write_text("baked\n")
+        # Enable the batocera services (belt-and-suspenders — the package batoexec
+        # + the formulas' service.running normally handle this; `start` is a
+        # runtime-only action left to batocera's boot-time service manager).
+        for svc in _SERVICES:
+            cp = ls._sh(["chroot", str(root), *env, "batocera-services", "enable", svc],
+                        check=False, capture=True)
+            _emit_cmd(build, "salt-apply", f"batocera-services enable {svc}", cp)
+        _emit(build, "salt-apply",
+              f"Bake-time provisioning complete (states_ok={ok}; enabled "
+              f"{', '.join(_SERVICES)}).", states_ok=ok, services=_SERVICES)
     finally:
         for m in reversed(mounts):
             ls._sh(["umount", "-lf", str(m)], check=False)
 
 
-def _dir_size(*roots: Path) -> int:
-    total = 0
-    for r in roots:
-        if not r.is_dir():
-            continue
-        for d, _sub, files in os.walk(r):
-            for f in files:
-                try:
-                    total += (Path(d) / f).stat().st_size
-                except OSError:
-                    pass
-    return total
-
-
 def provision(ctx: "BuildContext") -> bool:
     build = ctx.build
-    pkg_dir = Path(os.environ.get("BATOCERA_PACKAGES_DIR", "/opt/batocera-packages"))
-    if not pkg_dir.is_dir():
-        _emit(build, "provision",
-              f"Batocera packages dir {pkg_dir} not bundled in this worker — "
-              "shipping the base image.", level="warning")
-        return False
-
     userdata = ctx.work_dir / "userdata"
     userdata.mkdir(exist_ok=True)
-    _emit(build, "provision", "Batocera: overlaying packages into the userdata partition.",
-          backend="batocera_pkg")
+    _emit(build, "provision",
+          "Batocera: staging salt roots + repo config, then installing salt and "
+          "applying states at bake.", backend="batocera_pkg")
 
     # The fresh batocera image ships a tiny SHARE partition (it self-grows on
-    # first boot); the salt+alloy binaries don't fit. So grow the image file
-    # and the SHARE partition here, before mounting, then resize its fs.
-    pkg_roots = [pkg_dir / pkg / "userdata" / "system" for pkg in _PACKAGES]
-    payload = _dir_size(*pkg_roots)
-    grow_by = payload + 256 * 1024 * 1024  # payload + headroom
+    # first boot); the bake-time package installs (salt + alloy + zerotier +
+    # pacman cache) don't fit. So grow the image file + SHARE partition here,
+    # before mounting, then resize its fs.
+    grow_by = _GROW_MIB * 1024 * 1024
     img_before = ctx.target_image.stat().st_size
     _emit(build, "grow",
-          f"Package payload {payload // (1024*1024)} MiB; growing image "
-          f"{img_before // (1024*1024)} → {(img_before+grow_by) // (1024*1024)} MiB "
-          f"(+{grow_by // (1024*1024)} MiB headroom-included).",
-          payload_mib=payload // (1024*1024), grow_mib=grow_by // (1024*1024))
+          f"Growing image {img_before // (1024*1024)} → "
+          f"{(img_before+grow_by) // (1024*1024)} MiB (+{_GROW_MIB} MiB for "
+          "bake-time installs).", grow_mib=_GROW_MIB)
     ls._sh(["truncate", "-s", f"+{grow_by}", str(ctx.target_image)])
 
     lo: str | None = None
@@ -478,7 +471,7 @@ def provision(ctx: "BuildContext") -> bool:
                       ls._sh(["resize2fs", str(share_part)], check=False, capture=True))
         elif fstype in {"exfat", "vfat", "fat", "msdos"}:
             _emit(build, "grow",
-                  f"SHARE is {fstype} (no online grow) — overlay may still ENOSPC.",
+                  f"SHARE is {fstype} (no online grow) — installs may still ENOSPC.",
                   level="warning")
         ls._mount(str(share_part), userdata)
         mounted.append(userdata)
@@ -488,59 +481,26 @@ def provision(ctx: "BuildContext") -> bool:
 
         system = userdata / "system"
         system.mkdir(parents=True, exist_ok=True)
-        applied: list[str] = []
-        for pkg in _PACKAGES:
-            src = pkg_dir / pkg / "userdata" / "system"
-            if not src.is_dir():
-                _emit(build, "overlay", f"Package {pkg} not bundled — skipped.",
-                      level="warning")
-                continue
-            files, nbytes = _overlay(src, system)
-            free, _ = _free_mib(userdata)
-            _emit(build, "overlay",
-                  f"Overlaid {pkg}: {files} files, {nbytes // (1024*1024)} MiB "
-                  f"→ {free} MiB free.",
-                  package=pkg, files=files, mib=nbytes // (1024*1024), free_mib=free)
-            applied.append(pkg)
-        if not applied:
-            _emit(build, "overlay", f"No batocera packages found under {pkg_dir}.",
-                  level="warning")
-            return False
 
-        # Bake the salt file_roots (states) + pillar_roots so masterless
-        # `salt-call --local state.apply` runs the role's states on-device.
-        n_states, n_pillar, apply = _stage_salt_roots(ctx, system)
+        # The misc-salt package owns the state tree + minion conf (installed in
+        # _apply_salt_local). os-bakery just supplies the data: seed the minion
+        # id and write the rendered pillar into the package's pillar tree.
+        minion_id = _seed_minion_id(ctx, system)
+        states = _write_pillar(ctx, system)
         _emit(build, "salt-roots",
-              f"Staged file_roots ({n_states} state files) + pillar_roots "
-              f"({n_pillar} files) under {_SALT_DEVICE_ROOT}/{{states,pillar}}. "
-              f"State top applies pillar keys: {', '.join(apply) or '(none matched a formula)'}.",
-              state_files=n_states, pillar_files=n_pillar, states_applied=apply)
-        extmods = _stage_extension_modules(system)
-        if extmods:
-            _emit(build, "salt-roots",
-                  "Copied custom modules to the minion module path: "
-                  + ", ".join(f"{v}→/opt/salt/{k}" for k, v in extmods.items())
-                  + ".", extmods=extmods)
-        _write_minion_conf(ctx, system)
-        opts = ctx.build.option_values or {}
-        master = getattr(settings, "SALT_MASTER_URL", "") or opts.get("salt_master", "")
-        _emit(build, "salt-roots",
-              f"Wrote minion conf: id={opts.get('minion_id') or opts.get('hostname') or build.label}, "
-              f"{'master=' + master if master else 'file_client=local'}.")
-        _append_custom_sh(system, _SERVICES, apply)
-        _emit(build, "provision",
-              f"First-boot custom.sh: enable {', '.join(_SERVICES)} + "
-              f"salt-call --local state.apply [{', '.join(apply) or 'none'}].")
+              f"Seeded salt.minion-id={minion_id}; wrote pillar/batocera.sls "
+              f"(states: {', '.join(states) or '(none)'}). Salt + the state tree "
+              "are installed from the misc-salt package at bake.",
+              minion_id=minion_id, states=states)
         ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
-        # Run the pillar-keyed states masterless at bake time (chroot into the
-        # batocera squashfs root) so the apply output lands in the build log.
-        _apply_salt_local(ctx, build, _boot, userdata, apply)
+        # Install salt + apply the states in the chroot (squashfs root). No
+        # first-boot hook — the image is provisioned at bake.
+        _apply_salt_local(ctx, build, _boot, userdata)
         free_end, _ = _free_mib(userdata)
         _emit(build, "provision",
-              f"Batocera provisioned: {', '.join(applied)} + salt roots + model.yaml. "
-              f"{free_end} MiB free on SHARE.",
-              backend="batocera_pkg", state_files=n_states, pillar_files=n_pillar,
-              free_mib=free_end)
+              f"Batocera provisioned: salt installed + states applied + model.yaml "
+              f"staged. {free_end} MiB free on SHARE.",
+              backend="batocera_pkg", free_mib=free_end)
         return True
     finally:
         for path in reversed(mounted):

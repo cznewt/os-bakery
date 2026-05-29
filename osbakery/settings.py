@@ -219,6 +219,14 @@ PACKER_ARM_TOOLS_IMAGE = env(
 SALT_MASTER_URL = env("SALT_MASTER_URL", default="")
 SALT_MINION_VERSION = env("SALT_MINION_VERSION", default="3007")
 
+# Bake-time salt bootstrap: the batocera provisioner installs misc-salt directly
+# from a package URL (``pacman -U``) so salt-call exists, then runs the salt
+# states (which configure the private repos + install the rest). Keyed by the
+# normalized arch (aarch64 / x86_64). Provided as worker env via compose
+# (``SALT_PACKAGE_URLS`` in the x-django-env anchor); per-build override via the
+# ``salt_package_url`` option. Empty here so the env/compose is the source.
+SALT_PACKAGE_URLS = env.json("SALT_PACKAGE_URLS", default={})
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
