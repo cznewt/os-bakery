@@ -32,6 +32,25 @@ def _generate_download_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def strip_nul(value):
+    """Recursively drop NUL (U+0000) from strings in an event payload.
+
+    Postgres ``text``/``jsonb`` columns cannot store U+0000, yet salt-call /
+    pacman output captured into a :class:`BuildEvent` sometimes contains it — so
+    a build that applied successfully would still be failed by an unstorable log
+    byte on INSERT. Stripping happens at the persistence boundary
+    (:meth:`BuildEvent.save`) so every emit path is covered, not only the ones
+    that remembered to sanitize.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {key: strip_nul(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [strip_nul(item) for item in value]
+    return value
+
+
 class BuildRequest(models.Model):
     """A user-submitted intent to bake one image."""
 
@@ -172,6 +191,16 @@ class BuildEvent(models.Model):
     class Meta:
         ordering = ["at"]
         indexes = [models.Index(fields=["build", "at"])]
+
+    def save(self, *args, **kwargs):
+        # salt-call / pacman output captured into message+data can contain NUL
+        # (U+0000), which Postgres text/jsonb reject — a successful build must
+        # not be failed by an unstorable log byte. Strip here so every emit path
+        # (provisioner _emit helpers, raw BuildEvent.objects.create, admin) is
+        # covered centrally rather than per-call-site.
+        self.message = strip_nul(self.message or "")
+        self.data = strip_nul(self.data if self.data is not None else {})
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"[{self.level}] {self.phase}: {self.message[:60]}"
