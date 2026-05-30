@@ -36,6 +36,15 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+
+class BakeProvisionError(RuntimeError):
+    """A bake-time provisioning step failed hard enough that publishing the image
+    would ship an unprovisioned (broken) artifact — e.g. salt never installed, or
+    the states did not apply. Raised so the orchestrator/Celery task fails the
+    build (status=FAILED) instead of packing + publishing a green-but-empty image.
+    """
+
+
 # Salt is bootstrap-installed at bake from a package URL (``pacman -U`` of
 # settings.SALT_PACKAGE_URLS[arch] or the per-build ``salt_package_url`` option)
 # so salt-call exists to apply the states. Everything else (alloy, zerotier, …)
@@ -255,7 +264,7 @@ def _write_pillar(ctx: "BuildContext", system: Path) -> list[str]:
     return states
 
 
-def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
+def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> bool:
     """Install salt + apply the states in the batocera chroot at bake time.
 
     Chroots into the batocera squashfs root (overlay; only /userdata persists,
@@ -263,15 +272,22 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
     come with it), then runs the bundled onedir salt-call: ``state.apply
     batocera`` (configures the repos), then ``state.highstate`` (the pillar's
     ``states:`` list). Output is streamed into the build log.
+
+    Returns True when salt was installed and the states applied cleanly. Returns
+    False for a soft skip (no boot partition / unknown arch / squashfs not found)
+    where the image ships unprovisioned-but-intentionally. Raises
+    ``BakeProvisionError`` on a hard failure (salt-call never installed — e.g.
+    pacman SIGILL — or the states did not apply) so the build fails instead of
+    publishing an unprovisioned image.
     """
     if boot_part is None:
-        return
+        return False
     guest = (getattr(getattr(ctx.build.hardware_target, "architecture", None), "slug", "") or "").lower()
     sarch = _SARCH.get(guest)
     if not sarch:
         _emit(build, "salt-apply", f"Unknown arch '{guest}' — skipping bake-time apply.",
               level="warning")
-        return
+        return False
 
     work = ctx.work_dir
     bootmnt, sqroot, root = work / "bootp", work / "sqroot", work / "chroot"
@@ -288,7 +304,7 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
                   "Batocera squashfs root not found on boot partition — "
                   "skipping bake-time apply (states will run on first boot).",
                   level="warning")
-            return
+            return False
         ls._sh(["mount", "-t", "squashfs", "-o", "loop,ro", str(sqfs), str(sqroot)])
         mounts.append(sqroot)
         ls._sh(["mount", "-t", "overlay", "overlay", "-o",
@@ -330,20 +346,19 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
         # resets the stream under qemu on large files.
         url = _salt_pkg_url(ctx, sarch)
         if not url:
-            _emit(build, "salt-apply",
-                  "No salt package URL (set the `salt_package_url` option or "
-                  f"SALT_PACKAGE_URLS[{sarch}]) — cannot install salt at bake.",
-                  level="error")
-            return
+            msg = ("No salt package URL (set the `salt_package_url` option or "
+                   f"SALT_PACKAGE_URLS[{sarch}]) — cannot install salt at bake.")
+            _emit(build, "salt-apply", msg, level="error")
+            raise BakeProvisionError(msg)
         pkg_host = userdata / "system" / "pacman" / "osbakery-salt-bootstrap.pkg.tar.zst"
         pkg_chroot = "/userdata/system/pacman/osbakery-salt-bootstrap.pkg.tar.zst"
         pkg_host.parent.mkdir(parents=True, exist_ok=True)
         err = _download(url, pkg_host)
         if err:
-            _emit(build, "salt-apply",
-                  f"Could not fetch salt package {url}: {err} — cannot install "
-                  "salt at bake.", level="error")
-            return
+            msg = (f"Could not fetch salt package {url}: {err} — cannot install "
+                   "salt at bake.")
+            _emit(build, "salt-apply", msg, level="error")
+            raise BakeProvisionError(msg)
         _emit(build, "salt-apply",
               f"Downloaded salt package ({pkg_host.stat().st_size // (1024 * 1024)} MiB) "
               f"from {url}; installing with pacman -U.")
@@ -354,12 +369,34 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
             pkg_host.unlink()
         except OSError:
             pass
-        if not (userdata / "system" / "bin" / sarch / "salt" / "salt-call").is_file():
-            _emit(build, "salt-apply",
-                  f"Installing salt from {url} did not produce {saltcall} — "
-                  "cannot apply states at bake.", level="error",
-                  returncode=getattr(inst, "returncode", 1))
-            return
+        rc = getattr(inst, "returncode", 1)
+        if rc != 0 or not (userdata / "system" / "bin" / sarch / "salt" / "salt-call").is_file():
+            # rc < 0 means pacman was killed by a signal. A SIGILL (signal 4) with
+            # no captured output, on a native-arch chroot (sarch == the worker's
+            # machine, so no qemu), is the signature of a CPU-baseline mismatch:
+            # the batocera image's binaries use instructions the bake worker's CPU
+            # doesn't expose. salt-call would die the same way — nothing to apply.
+            if rc < 0:
+                sig = -rc
+                signame = {4: "SIGILL (illegal instruction)", 11: "SIGSEGV",
+                           9: "SIGKILL (OOM?)", 6: "SIGABRT"}.get(sig, f"signal {sig}")
+                reason = (
+                    f"pacman was killed by {signame} with no output. The image is "
+                    f"native {sarch} (no qemu emulation), so this is a CPU-baseline "
+                    "mismatch — the batocera image's binaries need instructions the "
+                    "bake worker's CPU doesn't expose (e.g. AVX2/BMI2 / x86-64-v3). "
+                    "Fix: run the worker on an AVX2-capable host, or set the worker "
+                    "VM's CPU model to host-passthrough; or bake from a batocera "
+                    "x86_64 image built to a lower instruction baseline."
+                )
+            else:
+                reason = (f"pacman -U exited rc={rc} and {saltcall} is absent "
+                          "(see the pacman output above)")
+            msg = (f"Installing salt from {url} failed — {reason}. Cannot apply "
+                   "states at bake; failing the build rather than shipping an "
+                   "unprovisioned image.")
+            _emit(build, "salt-apply", msg, level="error", returncode=rc)
+            raise BakeProvisionError(msg)
 
         # Bake-only conf from the package's minion conf, with grains_dirs pointed
         # at a curated copy (hardware-probing grains like batocera_resolution
@@ -391,6 +428,13 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
             else:
                 _emit_cmd(build, "salt-apply", "salt-call --local " + " ".join(sc), cp)
             ok = ok and rc == 0
+        if not ok:
+            msg = ("Bake-time salt run did not complete cleanly (state.apply "
+                   "batocera / state.highstate returned non-zero) — the image "
+                   "would be only partially provisioned. Failing the build; see "
+                   "the salt-call output above.")
+            _emit(build, "salt-apply", msg, level="error", states_ok=ok)
+            raise BakeProvisionError(msg)
         # Enable the batocera services (belt-and-suspenders — the package batoexec
         # + the formulas' service.running normally handle this; `start` is a
         # runtime-only action left to batocera's boot-time service manager).
@@ -401,6 +445,7 @@ def _apply_salt_local(ctx, build, boot_part, userdata: Path) -> None:
         _emit(build, "salt-apply",
               f"Bake-time provisioning complete (states_ok={ok}; enabled "
               f"{', '.join(_SERVICES)}).", states_ok=ok, services=_SERVICES)
+        return True
     finally:
         for m in reversed(mounts):
             ls._sh(["umount", "-lf", str(m)], check=False)
@@ -495,13 +540,24 @@ def provision(ctx: "BuildContext") -> bool:
         ls.write_model_file(system, "osbakery/model.yaml", ctx.effective_model)
         # Install salt + apply the states in the chroot (squashfs root). No
         # first-boot hook — the image is provisioned at bake.
-        _apply_salt_local(ctx, build, _boot, userdata)
+        applied = _apply_salt_local(ctx, build, _boot, userdata)
         free_end, _ = _free_mib(userdata)
+        if applied:
+            _emit(build, "provision",
+                  f"Batocera provisioned: salt installed + states applied + "
+                  f"model.yaml staged. {free_end} MiB free on SHARE.",
+                  backend="batocera_pkg", free_mib=free_end)
+            return True
+        # Soft skip (no boot partition / unknown arch / squashfs not found): the
+        # model is staged but salt + states were NOT applied. Don't claim success —
+        # the orchestrator logs "shipping the base image" and ships it as-is. Hard
+        # failures (salt-call missing, pacman SIGILL, states failed) raise
+        # BakeProvisionError and never reach here, failing the build.
         _emit(build, "provision",
-              f"Batocera provisioned: salt installed + states applied + model.yaml "
-              f"staged. {free_end} MiB free on SHARE.",
-              backend="batocera_pkg", free_mib=free_end)
-        return True
+              "Batocera bake-time apply was skipped — model.yaml is staged but "
+              f"salt/states were NOT applied. {free_end} MiB free on SHARE.",
+              level="warning", backend="batocera_pkg", free_mib=free_end)
+        return False
     finally:
         for path in reversed(mounted):
             ls._sh(["umount", "-lf", str(path)], check=False)
