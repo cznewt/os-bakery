@@ -109,7 +109,11 @@ def _emit_cmd(build, phase, label, cp) -> None:
 
 
 # Effective-model keys that are image/identity metadata, not salt formulas.
-_NON_STATE_KEYS = {"osbakery", "device", "options", "role"}
+# `vpn` is a cluster-level VPN descriptor ({kind, network_id, network_name});
+# the concrete mesh is applied via the `zerotier` formula, so `vpn` must not be
+# treated as a state (it has no SLS — it would fail highstate with "No matching
+# sls found for 'vpn'").
+_NON_STATE_KEYS = {"osbakery", "device", "options", "role", "vpn"}
 
 
 _SARCH = {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64", "aarch64": "aarch64"}

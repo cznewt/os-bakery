@@ -113,7 +113,7 @@ TENANTS: list[dict[str, Any]] = [
                         "network_id": "a57fdfffb03ef7e9",
                         "network_name": "nxlabs-geekedu",
                     },
-                    "zerotier-one": {
+                    "zerotier": {
                         "networks": [
                             {"id": "a57fdfffb03ef7e9",
                              "name": "nxlabs-geekedu"},
