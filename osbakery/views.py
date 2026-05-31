@@ -1089,8 +1089,8 @@ def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         register_member(
             url=integration.url, token=integration.token,
-            network_id=nid, member_id=ident["member_id"], name=member_name,
-            public_key=ident["public_key"],
+            org=known[nid].get("org", ""), network_id=nid,
+            member_id=ident["member_id"], name=member_name,
         )
         messages.success(
             request,

@@ -16,12 +16,14 @@ from pathlib import Path
 
 
 # Known ZeroTier networks a node can join from the node-detail UI. Add a row
-# when a new network is provisioned on the controller.
+# when a new network is provisioned on the controller. ``org`` is the ZTNET
+# organization id that owns the network (the controller is org-scoped, and our
+# two networks live in different orgs) — used to build the member endpoint.
 ZEROTIER_NETWORKS: list[dict[str, str]] = [
     {"network_id": "a57fdfffb0c77a31", "name": "craftama-infrastructure",
-     "cidr": "10.70.0.0/24"},
+     "cidr": "10.70.0.0/24", "org": "cm6ovuefh0003mt017mqtr8wp"},
     {"network_id": "a57fdfffb03ef7e9", "name": "nxlabs-geekedu",
-     "cidr": "10.50.20.0/24"},
+     "cidr": "10.50.20.0/24", "org": "cm6ovurq40005mt01316kv1wi"},
 ]
 
 
@@ -76,41 +78,44 @@ class RegistrationError(RuntimeError):
     """Registering/authorizing a member on the ZeroTier controller failed."""
 
 
-def register_member(*, url: str, token: str, network_id: str, member_id: str,
-                    name: str, public_key: str = "", authorize: bool = True) -> None:
-    """Register a member on ZeroTier Central (https://my.zerotier.com).
+def register_member(*, url: str, token: str, org: str, network_id: str,
+                    member_id: str, name: str, authorize: bool = True) -> None:
+    """Register + authorize a member on a self-hosted ZTNET controller.
 
-    Pre-provisions the member before the device ever connects, via
-    ``POST {url}/api/v1/network/<network_id>/member/<member_id>``: sets the
-    member ``name``, authorizes it, and — crucially — seeds ``config.identity``
-    with the device's full public identity (``identity.public`` contents,
-    ``<member_id>:0:<hexpubkey>``) so the controller binds this address to the
-    baked keypair instead of waiting for a live join. ``url`` + ``token`` come
-    from the tenant's :class:`tenants.models.Integration` (url is the API base,
-    e.g. ``https://my.zerotier.com``). Raises :class:`RegistrationError` on any
-    failure; the caller treats it best-effort.
+    Pre-provisions the member before the device connects, via the ZTNET
+    org-scoped API::
+
+        POST {url}/api/v1/org/<org>/network/<network_id>/member/<member_id>
+        x-ztnet-auth: <token>
+        {"name": ..., "authorized": true}
+
+    Per the ZTNET docs, posting a member id that hasn't joined yet creates it on
+    the controller (the device then connects as an already-authorized member; its
+    baked identity is delivered separately via the salt pillar). ``url`` is the
+    controller host (e.g. ``https://vpn.craftama.eu``) and ``org`` is the owning
+    ZTNET organization id — both come from the Integration + network catalog.
+    Raises :class:`RegistrationError` on failure; the caller treats it
+    best-effort.
     """
     import requests
 
-    if not (url and token):
-        raise RegistrationError("ZeroTier controller url/token not configured.")
+    if not (url and token and org):
+        raise RegistrationError(
+            "ZTNET controller url/token/org not configured."
+        )
     base = url.rstrip("/")
-    endpoint = f"{base}/api/v1/network/{network_id}/member/{member_id}"
-    config: dict = {"authorized": bool(authorize)}
-    if public_key:
-        # The full public identity ("<member_id>:0:<pub>") — lets ZT Central
-        # pre-seed this member with the baked keypair before it connects.
-        config["identity"] = public_key
-    payload: dict = {"name": name, "config": config}
+    endpoint = (f"{base}/api/v1/org/{org}/network/{network_id}"
+                f"/member/{member_id}")
+    payload: dict = {"name": name, "authorized": bool(authorize)}
     try:
         resp = requests.post(
             endpoint, json=payload, timeout=30,
-            headers={"Authorization": f"token {token}",
+            headers={"x-ztnet-auth": token,
                      "Content-Type": "application/json"},
         )
     except requests.RequestException as exc:
-        raise RegistrationError(f"ZeroTier API request failed: {exc}") from exc
+        raise RegistrationError(f"ZTNET API request failed: {exc}") from exc
     if resp.status_code >= 400:
         raise RegistrationError(
-            f"ZeroTier API {resp.status_code}: {resp.text[:300]}"
+            f"ZTNET API {resp.status_code}: {resp.text[:300]}"
         )
