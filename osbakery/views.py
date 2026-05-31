@@ -1531,21 +1531,44 @@ def bake_node_script(request: HttpRequest) -> HttpResponse:
 
 
 def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
-    """Per-node bake-node.sh: the live-node bake script with THIS node's salt
-    minion id baked in as the default, so running it reproduces what os-bakery
-    bakes for this node. Download from the node's Actions menu, then run against
-    the node's IP:  ./<slug>-init.sh <node-ip>
+    """Per-node init script: the live-node bake script (scripts/bake-node.sh)
+    with THIS node's salt minion id AND rendered pillar baked in, so running it
+    reproduces exactly what os-bakery bakes for this node. Downloaded as
+    ``<slug>-init.sh`` from the node's page; run it against the node's IP:
+
+        ./<slug>-init.sh [--test] <node-ip>
+
+    ``--test`` previews (salt test=True) without applying.
     """
+    import yaml as _yaml
+
+    from builds.provisioners.batocera_pkg import _NON_STATE_KEYS
+
     node = get_object_or_404(Node, pk=pk)
     base = settings.BASE_DIR / "scripts" / "bake-node.sh"
     if not base.exists():
         raise Http404("bake-node.sh not found")
     mid = node.minion_id or node.slug
-    script = base.read_text().replace(
-        'MINION_ID="${MINION_ID:-}"',
-        f'MINION_ID="${{MINION_ID:-{mid}}}"',
-        1,
-    )
+
+    # Build the same pillar the bake writes (batocera_pkg._write_pillar): the
+    # effective model minus image/identity keys, plus a pillar-driven `states`
+    # list (batocera first — it configures the repos the rest install from).
+    model = node.effective_model or {}
+    data = {k: v for k, v in model.items() if k not in _NON_STATE_KEYS}
+    states = (["batocera"] if "batocera" in data else []) + \
+             [k for k in data if k != "batocera"]
+    pillar_yaml = _yaml.safe_dump({**data, "states": states},
+                                  default_flow_style=False, sort_keys=False)
+
+    pillar_marker = "NEW_PILLAR=\"$(cat <<'OSBAKERY_PILLAR_EOF'\nOSBAKERY_PILLAR_EOF\n)\""
+    pillar_filled = ("NEW_PILLAR=\"$(cat <<'OSBAKERY_PILLAR_EOF'\n"
+                     + pillar_yaml + "OSBAKERY_PILLAR_EOF\n)\"")
+
+    script = (base.read_text()
+              .replace('MINION_ID="${MINION_ID:-}"',
+                       f'MINION_ID="${{MINION_ID:-{mid}}}"', 1)
+              .replace(pillar_marker, pillar_filled, 1))
+
     resp = HttpResponse(script, content_type="application/x-shellscript")
     resp["Content-Disposition"] = f'attachment; filename="{node.slug}-init.sh"'
     return resp

@@ -40,6 +40,9 @@
 
     <main class="pb-24 space-y-6">
       <div class="flex items-center gap-3">
+        <a href="/nodes/{{ node.id }}/bake-node.sh" download
+           title="Download {{ node.slug }}-init.sh — bake this node live over SSH (ssh key, else root/linux password). Run: ./{{ node.slug }}-init.sh &lt;node-ip&gt; (add --test for a dry run)."
+           class="inline-flex items-center gap-2 text-sm font-medium border border-stone-300 text-stone-700 rounded-lg px-4 py-2 hover:bg-stone-100">⤓ Download init script</a>
         <form method="post" action="/nodes/{{ node.id }}/bake/">
           {% csrf_token %}
           <button type="submit" class="inline-flex items-center gap-2 text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">↻ Bake this node</button>
