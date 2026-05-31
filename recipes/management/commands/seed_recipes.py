@@ -30,7 +30,7 @@ RECIPES: list[dict[str, Any]] = [
         "salt_states": ["base.locale", "batocera.base"],
         # No hardcoded batocera config — the salt batocera module owns
         # boot_to_arcade/power per role; os-bakery only carries the role.
-        "pillar_overrides": {"role": "batocera-handheld"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "handheld-1", "sort_order": 10},
@@ -59,7 +59,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64", "rpi4", "rpi5"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "batocera.base", "batocera.arcade"],
-        "pillar_overrides": {"role": "batocera-arcade"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "arcade-1", "sort_order": 10},
@@ -81,7 +81,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "batocera.base", "batocera.minimal"],
-        "pillar_overrides": {"role": "batocera-notebook"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "notebook-1", "sort_order": 10},
@@ -104,7 +104,7 @@ RECIPES: list[dict[str, Any]] = [
         # cloud-init seed: salt-bootstrap + masterless highstate at first boot.
         "provisioner": "cloud-init",
         "salt_states": ["base.locale", "base.users", "ubuntu.base"],
-        "pillar_overrides": {"variant": "desktop", "role": "ubuntu-desktop"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "ubuntu-1", "sort_order": 10},
@@ -131,8 +131,7 @@ RECIPES: list[dict[str, Any]] = [
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "base.hardening",
                         "ubuntu.server"],
-        "pillar_overrides": {"variant": "server", "role": "ubuntu-docker",
-                             "fleet_role": "docker"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "docker-1", "sort_order": 10},
@@ -159,7 +158,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["rpi3", "rpi4", "rpi5"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "raspios.headless"],
-        "pillar_overrides": {"variant": "lite", "role": "raspios-headless"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "raspi-1", "sort_order": 10},
@@ -185,7 +184,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["rpi4", "rpi5", "pc-amd64"],
         "version": "1.0.0",
         "salt_states": ["haos.base", "haos.network", "haos.ssh"],
-        "pillar_overrides": {"role": "haos-appliance"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "default": "homeassistant", "sort_order": 10},
@@ -225,7 +224,7 @@ RECIPES: list[dict[str, Any]] = [
                            "beaglebone-black", "beaglebone-blue"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "base.hardening"],
-        "pillar_overrides": {"role": "debian-server", "fleet_role": "linux"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "debian-1", "sort_order": 10},
@@ -249,7 +248,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users"],
-        "pillar_overrides": {"role": "omarchy-desktop"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "omarchy", "sort_order": 10},
@@ -270,7 +269,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "ubuntu.base"],
-        "pillar_overrides": {"role": "popos-workstation"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "popos-1", "sort_order": 10},
@@ -292,7 +291,7 @@ RECIPES: list[dict[str, Any]] = [
                            "jetson-orin-nano"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users"],
-        "pillar_overrides": {"role": "l4t-jetson"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "jetson-1", "sort_order": 10},
@@ -313,7 +312,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64", "rpi4", "rpi5"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users"],
-        "pillar_overrides": {"role": "kali-pentest"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "kali-1", "sort_order": 10},
@@ -336,7 +335,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64", "vm-qemu", "vm-hyperv", "vm-virtualbox"],
         "version": "1.0.0",
         "salt_states": [],
-        "pillar_overrides": {"role": "windows-workstation"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Computer name", "kind": "string",
              "required": True, "default": "WIN-1", "sort_order": 10,
@@ -383,7 +382,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["mac-apple-silicon", "mac-intel"],
         "version": "1.0.0",
         "salt_states": ["macos"],
-        "pillar_overrides": {"variant": "desktop", "role": "macos-workstation"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Computer name", "kind": "string",
              "required": True, "default": "mac-1", "sort_order": 10},
@@ -419,7 +418,6 @@ RECIPES: list[dict[str, Any]] = [
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
-            "role": "esphome-laskakit-esplan",
             "esphome": {
                 "package": "packages/device/laskakit/esplan.yaml",
                 "models_repo": "https://github.com/Craftama/esphome-models",
@@ -460,7 +458,6 @@ RECIPES: list[dict[str, Any]] = [
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
-            "role": "esphome-bluetooth-proxy",
             "esphome": {
                 "package": "packages/network/bluetooth/pine64.yaml",
                 "models_repo": "https://github.com/Craftama/esphome-models",
@@ -489,7 +486,6 @@ RECIPES: list[dict[str, Any]] = [
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
-            "role": "esphome-vindriktning",
             "esphome": {
                 "package": "packages/device/laskakit/vindriktning.yaml",
                 "models_repo": "https://github.com/Craftama/esphome-models",
@@ -535,7 +531,6 @@ RECIPES: list[dict[str, Any]] = [
         "version": "1.0.0",
         "salt_states": [],
         "pillar_overrides": {
-            "role": "esphome-custom",
             "esphome": {
                 "package": "",
                 "models_repo": "https://github.com/Craftama/esphome-models",
@@ -565,9 +560,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["beaglebone-blue"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "debian.ardupilot"],
-        "pillar_overrides": {"role": "ardupilot-rover",
-                             "fleet_role": "robotics",
-                             "ardupilot": {"vehicle": "rover"}},
+        "pillar_overrides": {"ardupilot": {"vehicle": "rover"}},
         "pinned_release": {"os_slug": "debian", "version": "12",
                            "channel": "stable"},
         "options": [
@@ -604,9 +597,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["beaglebone-blue"],
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "debian.ardupilot"],
-        "pillar_overrides": {"role": "ardupilot-copter",
-                             "fleet_role": "robotics",
-                             "ardupilot": {"vehicle": "copter"}},
+        "pillar_overrides": {"ardupilot": {"vehicle": "copter"}},
         "pinned_release": {"os_slug": "debian", "version": "12",
                            "channel": "stable"},
         "options": [
@@ -651,7 +642,7 @@ RECIPES: list[dict[str, Any]] = [
         "hardware_slugs": ["pc-amd64"],
         "version": "1.0.0",
         "salt_states": [],
-        "pillar_overrides": {"role": "proxmox-bare-metal", "fleet_role": "pve"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Node hostname", "kind": "string",
              "required": True, "default": "pve-1", "sort_order": 10},
@@ -706,8 +697,7 @@ RECIPES: list[dict[str, Any]] = [
         "version": "1.0.0",
         "salt_states": ["base.locale", "base.users", "base.hardening",
                         "ubuntu.server", "ubuntu.k3s"],
-        "pillar_overrides": {"variant": "server", "role": "ubuntu-kube",
-                             "fleet_role": "kube"},
+        "pillar_overrides": {},
         "options": [
             {"key": "hostname", "label": "Hostname", "kind": "string",
              "required": True, "default": "kube-1", "sort_order": 10},
