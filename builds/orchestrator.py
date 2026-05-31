@@ -225,10 +225,12 @@ def _build_effective_model(build: BuildRequest) -> dict:
     # this every device bakes with the same id and the fleet's node-name-glob
     # role matching breaks. Node builds take the node's minion id; ad-hoc builds
     # fall back to the hostname option / label.
+    # An explicit salt.id in cluster/node parameters (merged above) wins; only
+    # fall back to the node/build identity when none was set.
     _opts = build.option_values or {}
     minion_id = (build.node.minion_id if build.node_id is not None
                  else _opts.get("minion_id") or _opts.get("hostname") or build.label)
-    if minion_id:
+    if minion_id and not (isinstance(model.get("salt"), dict) and model["salt"].get("id")):
         model = _deep_merge(model, {"salt": {"id": minion_id}})
     model = _deep_merge(model, {
         "osbakery": {

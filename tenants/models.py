@@ -292,9 +292,12 @@ class Node(TimestampedModel):
         model = _deep_merge(model, {"options": {
             "hostname": self.minion_id, "minion_id": self.minion_id,
         }})
-        # Salt minion id — override the gedu salt formula's "minion" default so
-        # the fleet can match this node by its minion-id glob.
-        model = _deep_merge(model, {"salt": {"id": self.minion_id}})
+        # Salt minion id — default to the node's minion id so the gedu salt
+        # formula's "minion" default is overridden and the fleet can match this
+        # node by its minion-id glob. An explicit salt.id in cluster/node
+        # parameters (merged above) wins, so it is not clobbered here.
+        if not (isinstance(model.get("salt"), dict) and model["salt"].get("id")):
+            model = _deep_merge(model, {"salt": {"id": self.minion_id}})
         model = _deep_merge(model, {"osbakery": {
             "node": f"{self.cluster.tenant.slug}/{self.cluster.slug}/{self.slug}",
             "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
