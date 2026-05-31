@@ -18,6 +18,7 @@ from typing import NamedTuple
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 
 # Known release dates for OSes whose version isn't itself a date. Date-versioned
 # OSes (raspios = YYYY-MM-DD) are derived from the version automatically.
@@ -1045,6 +1046,7 @@ class Command(BaseCommand):
                     )
 
         pruned = {"release": 0, "image": 0}
+        kept = {"release": 0, "image": 0}
         if prune:
             seed_release_keys = {
                 (r.os_slug, r.version, r.channel) for r in RELEASES
@@ -1053,33 +1055,52 @@ class Command(BaseCommand):
                 (i.os_slug, i.release_version, i.release_channel,
                  i.target_slug, i.variant) for i in _images()
             }
-            with transaction.atomic():
-                for r in OSRelease.objects.select_related("operating_system"):
-                    key = (r.operating_system.slug, r.version, r.channel)
-                    if key not in seed_release_keys:
+            # Prune images BEFORE releases so a dropped release whose images are
+            # all gone can then be removed too. Anything still pinned by a build
+            # (PROTECT) is kept rather than crashing the seed — e.g. a succeeded
+            # build holds haos@17.1 long after the seed moves on to 17.3. Each
+            # delete gets its own savepoint so one protected row doesn't poison
+            # the rest of the prune.
+            for img in UpstreamImage.objects.select_related(
+                "release", "release__operating_system", "hardware_target",
+            ):
+                key = (
+                    img.release.operating_system.slug,
+                    img.release.version,
+                    img.release.channel,
+                    img.hardware_target.slug,
+                    img.variant,
+                )
+                if key not in seed_image_keys:
+                    label = f"{key[0]}@{key[1]} {key[3]} {key[4] or '(none)'}"
+                    try:
+                        with transaction.atomic():
+                            img.delete()
+                        pruned["image"] += 1
                         if not quiet:
-                            self.stdout.write(f"  [prune] OSRelease: "
-                                              f"{key[0]}@{key[1]}/{key[2]}")
-                        r.delete()
-                        pruned["release"] += 1
-                for img in UpstreamImage.objects.select_related(
-                    "release", "release__operating_system", "hardware_target",
-                ):
-                    key = (
-                        img.release.operating_system.slug,
-                        img.release.version,
-                        img.release.channel,
-                        img.hardware_target.slug,
-                        img.variant,
-                    )
-                    if key not in seed_image_keys:
+                            self.stdout.write(f"  [prune] UpstreamImage: {label}")
+                    except ProtectedError:
+                        kept["image"] += 1
                         if not quiet:
                             self.stdout.write(
-                                f"  [prune] UpstreamImage: "
-                                f"{key[0]}@{key[1]} {key[3]} {key[4] or '(none)'}"
+                                f"  [keep ] UpstreamImage pinned by a build: {label}"
                             )
-                        img.delete()
-                        pruned["image"] += 1
+            for r in OSRelease.objects.select_related("operating_system"):
+                key = (r.operating_system.slug, r.version, r.channel)
+                if key not in seed_release_keys:
+                    label = f"{key[0]}@{key[1]}/{key[2]}"
+                    try:
+                        with transaction.atomic():
+                            r.delete()
+                        pruned["release"] += 1
+                        if not quiet:
+                            self.stdout.write(f"  [prune] OSRelease: {label}")
+                    except ProtectedError:
+                        kept["release"] += 1
+                        if not quiet:
+                            self.stdout.write(
+                                f"  [keep ] OSRelease pinned by a build: {label}"
+                            )
 
         msg = (
             f"Seeded: {report['arch']} archs ({report['arch+']} new), "
@@ -1091,6 +1112,9 @@ class Command(BaseCommand):
         if prune:
             msg += (f" Pruned {pruned['release']} releases, "
                     f"{pruned['image']} images.")
+            if kept["release"] or kept["image"]:
+                msg += (f" Kept {kept['release']} releases + {kept['image']} "
+                        f"images still pinned by builds.")
         self.stdout.write(self.style.SUCCESS(msg))
 
     def _echo(self, kind: str, identifier: str, created: bool) -> None:
