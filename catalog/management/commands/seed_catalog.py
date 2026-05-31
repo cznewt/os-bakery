@@ -30,6 +30,7 @@ KNOWN_RELEASE_DATES: dict[tuple[str, str], str] = {
     ("debian", "12"): "2023-06-10",
     ("popos", "22.04"): "2022-04-25",
     # Batocera — from https://batocera.org/changelog (version - date - codename).
+    ("batocera", "43.1"): "2026-05-30",
     ("batocera", "43"): "2026-05-08",
     ("batocera", "42"): "2025-10-12",
     ("batocera", "39"): "2024-03-04",
@@ -461,7 +462,10 @@ RELEASES: list[ReleaseSeed] = [
     # the legacy build (RG552 stopped at 39).
     ReleaseSeed("batocera", "39", "stable", codename="Painted Lady"),
     ReleaseSeed("batocera", "42", "stable", codename="Papilio Ulysses"),
-    ReleaseSeed("batocera", "43", "stable", codename="Glasswing", is_default=True),
+    ReleaseSeed("batocera", "43", "stable", codename="Glasswing"),
+    # 43.1 — stability patch over 43 (no codename). Only the x86_64 builds got
+    # a 43.1 image; the SBC/handheld builds stay on their 43/42/39 images.
+    ReleaseSeed("batocera", "43.1", "stable", is_default=True),
     # Ubuntu — Jammy (22.04) is still in standard support until 2027; Noble
     # (24.04) is the headline LTS for new builds. 16.04 Xenial dropped (ESM
     # only, end-of-mainstream-support).
@@ -525,8 +529,8 @@ RELEASES: list[ReleaseSeed] = [
 # directory; this resolves to whatever file is currently inside it.
 # Two x86-64 batocera builds: the generic "full" PC image and the "zen"
 # (x86-64-v3) build that the modern x86 handhelds (Steam Deck, AYN Loki) run.
-_BATO_X64_FULL = "https://sour-silent-prune.6fcff5d8.katapult.cloud/images/batocera-x86_64-43-20260430.img.gz"
-_BATO_X64_ZEN = "https://updates.batocera.org/x86-64-v3/stable/last/batocera-zen3-x86-64-v3-43-20260430.img.gz"
+_BATO_X64_FULL = "https://updates.batocera.org/x86_64/stable/last/batocera-x86_64-43.1-20260529.img.gz"
+_BATO_X64_ZEN = "https://updates.batocera.org/x86-64-v3/stable/last/batocera-zen3-x86-64-v3-43.1-20260529.img.gz"
 _RGXX3 = "https://updates.batocera.org/anbernic-rgxx3/stable/last/batocera-rk3568-anbernic-rgxx3-42-20251016.img.gz"
 
 # (primary target, version, variant, url, extra_targets that share this image)
@@ -536,9 +540,10 @@ BATOCERA_IMAGES: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("rpi4",      "43", "", "https://updates.batocera.org/bcm2711/stable/last/batocera-bcm2711-43-20260501.img.gz", ()),
     ("rpi5",      "43", "", "https://updates.batocera.org/bcm2712/stable/last/batocera-bcm2712-43-20260430.img.gz", ()),
     # x86-64: two builds. "full" = generic PC; "zen" (x86-64-v3) is shared by
-    # the modern x86 handhelds (Steam Deck + AYN Loki Zero).
-    ("pc-amd64",  "43", "full", _BATO_X64_FULL, ()),
-    ("pc-amd64",  "43", "zen",  _BATO_X64_ZEN, ("steamdeck", "loki-zero")),
+    # the modern x86 handhelds (Steam Deck + AYN Loki Zero). Both bumped to the
+    # 43.1 stability patch (the SBC/handheld builds have no 43.1 image yet).
+    ("pc-amd64",  "43.1", "full", _BATO_X64_FULL, ()),
+    ("pc-amd64",  "43.1", "zen",  _BATO_X64_ZEN, ("steamdeck", "loki-zero")),
     # Anbernic RK3566 family — ONE rgxx3 image shared by the RG353 series
     # AND the RG503 (all Rockchip RK3566).
     ("rg353p",    "42", "", _RGXX3, ("rg353ps", "rg353v", "rg353vs", "rg503")),
