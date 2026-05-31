@@ -1472,17 +1472,28 @@ def bake_node(request: HttpRequest, pk: int) -> HttpResponse:
 
     img = node.upstream_image
     if img is None:
+        from django.db.models import Q
+        # Match the device as the image's primary target OR an extra target
+        # (x86 handhelds like Loki / Steam Deck share the one x86_64 build).
+        target_q = (Q(hardware_target=node.hardware_target)
+                    | Q(extra_targets=node.hardware_target))
+        candidates = (UpstreamImage.objects
+                      .filter(release__operating_system=recipe.operating_system)
+                      .filter(target_q).distinct())
+        # Prefer the recipe's pinned release, else the OS default.
         release = recipe.pinned_release or recipe.operating_system.releases.filter(
             is_default=True
         ).first()
         if release:
-            from django.db.models import Q
-            # Match the device as the image's primary target OR an extra target
-            # (x86 handhelds like Loki / Steam Deck share the one x86_64 build).
-            img = (UpstreamImage.objects.filter(release=release)
-                   .filter(Q(hardware_target=node.hardware_target)
-                           | Q(extra_targets=node.hardware_target))
-                   .order_by("variant").distinct().first())
+            img = candidates.filter(release=release).order_by("variant").first()
+        # Per-SoC distros (Batocera) ship device images that lag the OS default —
+        # e.g. the RG353/RK3566 build is stuck on v42 while the default is v43, and
+        # no v43 rgxx3 image exists. Fall back to the newest release that actually
+        # has an image for this device rather than failing the bake.
+        if img is None:
+            img = candidates.order_by(
+                "-release__released_on", "-release__version", "variant"
+            ).first()
     if img is None:
         messages.error(
             request,
