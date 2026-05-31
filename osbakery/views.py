@@ -1534,7 +1534,7 @@ def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
     """Per-node bake-node.sh: the live-node bake script with THIS node's salt
     minion id baked in as the default, so running it reproduces what os-bakery
     bakes for this node. Download from the node's Actions menu, then run against
-    the node's IP:  ./bake-<slug>.sh <node-ip>
+    the node's IP:  ./<slug>-init.sh <node-ip>
     """
     node = get_object_or_404(Node, pk=pk)
     base = settings.BASE_DIR / "scripts" / "bake-node.sh"
@@ -1547,5 +1547,5 @@ def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
         1,
     )
     resp = HttpResponse(script, content_type="application/x-shellscript")
-    resp["Content-Disposition"] = f'attachment; filename="bake-{node.slug}.sh"'
+    resp["Content-Disposition"] = f'attachment; filename="{node.slug}-init.sh"'
     return resp
