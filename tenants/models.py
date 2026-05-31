@@ -136,20 +136,22 @@ def splice_zerotier_identities(model: dict, node) -> dict:
 
     Reads ``model['zerotier']['networks']`` (declared at cluster/node level)
     and, for each network the node has a generated :class:`ZerotierIdentity`
-    for, emits the per-network contract the salt formula consumes::
+    for, emits the normalised per-network contract the salt formula consumes::
 
         zerotier:
           networks:
-            - network_id: a57fdfffb0c77a31   # 16-hex network to join
-              name: craftama-infrastructure  # optional label (kept as-is)
-              id: 8a1bd2cf42                  # 10-hex member address
-              public_key: "8a1bd2cf42:0:…"   # identity.public
-              secret_key: "8a1bd2cf42:0:…:…" # identity.secret (sensitive)
+            - network_id:   a57fdfffb0c77a31     # 16-hex network to join
+              network_name: craftama-infra…      # optional label
+              member_id:    8a1bd2cf42           # 10-hex member address
+              member_name:  arcade-1             # optional controller member name
+              public_key:   "8a1bd2cf42:0:…"     # identity.public
+              secret_key:   "8a1bd2cf42:0:…:…"   # identity.secret (sensitive)
 
-    The network identifier is normalised to ``network_id`` (accepting a legacy
-    ``id``/``network`` key on input). Networks without a generated identity are
-    left as ``{network_id, name}`` — the formula falls back to a self-generated
-    identity on first boot ("if provided").
+    Keys are normalised: the network id is ``network_id`` (legacy ``network``
+    accepted on input), the label is ``network_name`` (legacy ``name``), and the
+    member address is ``member_id`` (never ``id`` — that was ambiguous with the
+    network id). Networks without a generated identity keep just
+    ``{network_id, network_name}`` — the formula self-generates on first boot.
     """
     zt = model.get("zerotier")
     if not isinstance(zt, dict):
@@ -165,28 +167,26 @@ def splice_zerotier_identities(model: dict, node) -> dict:
             out.append(entry)
             continue
         e = dict(entry)
-        # Network identifier: prefer explicit network_id/network, else the
-        # legacy `id` key (which historically held the network id).
-        if e.get("network_id"):
-            nid = e.pop("network_id")
-        elif e.get("network"):
-            nid = e.pop("network")
-        else:
-            nid = e.pop("id", None)
+        # Network id: prefer network_id, accept legacy `network`. (`id` is no
+        # longer treated as the network id — it now means the member address.)
+        nid = e.pop("network_id", None) or e.pop("network", None)
+        label = e.pop("network_name", None) or e.pop("name", None)
         ident = by_net.get(nid)
         ordered: dict = {}
         if nid is not None:
             ordered["network_id"] = nid
-        if "name" in e:
-            ordered["name"] = e["name"]
+        if label is not None:
+            ordered["network_name"] = label
         if ident and ident.member_id:
-            ordered["id"] = ident.member_id
+            ordered["member_id"] = ident.member_id
             if ident.public_key:
                 ordered["public_key"] = ident.public_key
             if ident.secret_key:
                 ordered["secret_key"] = ident.secret_key
+        # Carry any remaining keys (e.g. member_name) verbatim; drop a stale
+        # `id` so the normalised member_id is the single source of truth.
         for key, value in e.items():
-            if key not in ordered and key != "name":
+            if key not in ordered and key != "id":
                 ordered[key] = value
         out.append(ordered)
 

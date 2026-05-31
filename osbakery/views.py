@@ -1021,18 +1021,20 @@ def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
     if nid not in known:
         messages.error(request, "Pick a known ZeroTier network.")
         return redirect("node_detail", pk=pk)
-    name = known[nid]["name"]
+    name = known[nid]["network_name"]
     member_name = (request.POST.get("member_name") or "").strip() or node.minion_id
 
-    # Append to node.parameters.zerotier.networks (dedup by network_id).
+    # Append to node.parameters.zerotier.networks (dedup by network_id). Use the
+    # normalised keys (network_name / member_name); accept legacy network/id when
+    # matching an existing entry.
     params = dict(node.parameters or {})
     zt = dict(params.get("zerotier") or {})
     nets = list(zt.get("networks") or [])
     idx = next((i for i, e in enumerate(nets)
                 if isinstance(e, dict)
-                and (e.get("network_id") or e.get("network") or e.get("id")) == nid),
+                and (e.get("network_id") or e.get("network")) == nid),
                None)
-    entry = {"network_id": nid, "name": name, "member_name": member_name}
+    entry = {"network_id": nid, "network_name": name, "member_name": member_name}
     if idx is None:
         nets.append(entry)
     else:

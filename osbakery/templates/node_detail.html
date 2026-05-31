@@ -152,7 +152,7 @@
                   <div>
                     <label class="block text-[10px] uppercase tracking-wider text-stone-500 font-medium mb-1">Network</label>
                     <select name="network_id" required class="w-full border border-stone-300 rounded px-2 py-1.5 text-sm">
-                      {% for n in zt_networks %}<option value="{{ n.network_id }}"{% if n.joined %} disabled{% endif %}>{{ n.name }} — {{ n.cidr }}{% if n.joined %} (joined){% endif %}</option>{% endfor %}
+                      {% for n in zt_networks %}<option value="{{ n.network_id }}"{% if n.joined %} disabled{% endif %}>{{ n.network_name }} — {{ n.cidr }}{% if n.joined %} (joined){% endif %}</option>{% endfor %}
                     </select>
                   </div>
                   <div>

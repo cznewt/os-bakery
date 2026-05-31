@@ -20,9 +20,9 @@ from pathlib import Path
 # organization id that owns the network (the controller is org-scoped, and our
 # two networks live in different orgs) — used to build the member endpoint.
 ZEROTIER_NETWORKS: list[dict[str, str]] = [
-    {"network_id": "a57fdfffb0c77a31", "name": "craftama-infrastructure",
+    {"network_id": "a57fdfffb0c77a31", "network_name": "craftama-infrastructure",
      "cidr": "10.70.0.0/24", "org": "cm6ovuefh0003mt017mqtr8wp"},
-    {"network_id": "a57fdfffb03ef7e9", "name": "nxlabs-geekedu",
+    {"network_id": "a57fdfffb03ef7e9", "network_name": "nxlabs-geekedu",
      "cidr": "10.50.20.0/24", "org": "cm6ovurq40005mt01316kv1wi"},
 ]
 
