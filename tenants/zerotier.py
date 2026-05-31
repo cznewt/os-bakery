@@ -77,13 +77,18 @@ class RegistrationError(RuntimeError):
 
 
 def register_member(*, url: str, token: str, network_id: str, member_id: str,
-                    name: str, authorize: bool = True) -> None:
-    """Register a member on a ZeroTier controller (ZeroTier Central API).
+                    name: str, public_key: str = "", authorize: bool = True) -> None:
+    """Register a member on ZeroTier Central (https://my.zerotier.com).
 
-    Sets the member's ``name`` and (by default) authorizes it on the network via
-    ``POST {url}/api/v1/network/<network_id>/member/<member_id>``. ``url`` +
-    ``token`` come from the tenant's :class:`tenants.models.Integration`. Raises
-    :class:`RegistrationError` on any failure; the caller treats it best-effort.
+    Pre-provisions the member before the device ever connects, via
+    ``POST {url}/api/v1/network/<network_id>/member/<member_id>``: sets the
+    member ``name``, authorizes it, and — crucially — seeds ``config.identity``
+    with the device's full public identity (``identity.public`` contents,
+    ``<member_id>:0:<hexpubkey>``) so the controller binds this address to the
+    baked keypair instead of waiting for a live join. ``url`` + ``token`` come
+    from the tenant's :class:`tenants.models.Integration` (url is the API base,
+    e.g. ``https://my.zerotier.com``). Raises :class:`RegistrationError` on any
+    failure; the caller treats it best-effort.
     """
     import requests
 
@@ -91,7 +96,12 @@ def register_member(*, url: str, token: str, network_id: str, member_id: str,
         raise RegistrationError("ZeroTier controller url/token not configured.")
     base = url.rstrip("/")
     endpoint = f"{base}/api/v1/network/{network_id}/member/{member_id}"
-    payload: dict = {"name": name, "config": {"authorized": bool(authorize)}}
+    config: dict = {"authorized": bool(authorize)}
+    if public_key:
+        # The full public identity ("<member_id>:0:<pub>") — lets ZT Central
+        # pre-seed this member with the baked keypair before it connects.
+        config["identity"] = public_key
+    payload: dict = {"name": name, "config": config}
     try:
         resp = requests.post(
             endpoint, json=payload, timeout=30,
