@@ -15,6 +15,16 @@ import tempfile
 from pathlib import Path
 
 
+# Known ZeroTier networks a node can join from the node-detail UI. Add a row
+# when a new network is provisioned on the controller.
+ZEROTIER_NETWORKS: list[dict[str, str]] = [
+    {"network_id": "a57fdfffb0c77a31", "name": "craftama-infrastructure",
+     "cidr": "10.70.0.0/24"},
+    {"network_id": "a57fdfffb03ef7e9", "name": "nxlabs-geekedu",
+     "cidr": "10.50.20.0/24"},
+]
+
+
 class IdtoolError(RuntimeError):
     """zerotier-idtool is missing or failed."""
 

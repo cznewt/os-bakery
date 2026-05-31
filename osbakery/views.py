@@ -1001,6 +1001,70 @@ def generate_zerotier_identity(request: HttpRequest, pk: int) -> HttpResponse:
     return redirect("node_detail", pk=pk)
 
 
+@require_POST
+def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
+    """Join a node to a ZeroTier network from the node page.
+
+    Appends ``{network_id, name, member_name}`` to the node's
+    ``parameters.zerotier.networks`` (deduped by network_id) and immediately
+    generates the identity keypair, so the network shows up in the identities
+    table prepopulated. ``member_name`` defaults to the node's minion id.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster"), pk=pk)
+    from tenants.models import ZerotierIdentity
+    from tenants.zerotier import (ZEROTIER_NETWORKS, IdtoolError,
+                                  generate_identity)
+
+    nid = (request.POST.get("network_id") or "").strip()
+    known = {n["network_id"]: n for n in ZEROTIER_NETWORKS}
+    if nid not in known:
+        messages.error(request, "Pick a known ZeroTier network.")
+        return redirect("node_detail", pk=pk)
+    name = known[nid]["name"]
+    member_name = (request.POST.get("member_name") or "").strip() or node.minion_id
+
+    # Append to node.parameters.zerotier.networks (dedup by network_id).
+    params = dict(node.parameters or {})
+    zt = dict(params.get("zerotier") or {})
+    nets = list(zt.get("networks") or [])
+    idx = next((i for i, e in enumerate(nets)
+                if isinstance(e, dict)
+                and (e.get("network_id") or e.get("network") or e.get("id")) == nid),
+               None)
+    entry = {"network_id": nid, "name": name, "member_name": member_name}
+    if idx is None:
+        nets.append(entry)
+    else:
+        nets[idx] = {**nets[idx], **entry}
+    zt["networks"] = nets
+    params["zerotier"] = zt
+    node.parameters = params
+    node.save(update_fields=["parameters"])
+
+    # Generate (or refresh) the identity for this network.
+    try:
+        ident = generate_identity()
+        ZerotierIdentity.objects.update_or_create(
+            node=node, network_id=nid,
+            defaults={
+                "member_id": ident["member_id"],
+                "public_key": ident["public_key"],
+                "secret_key": ident["secret_key"],
+            },
+        )
+        messages.success(
+            request,
+            f"Joined {name} ({nid}) as {member_name} — identity {ident['member_id']} generated.",
+        )
+    except IdtoolError as exc:
+        messages.warning(
+            request,
+            f"Joined {name} ({nid}) as {member_name}, but identity generation "
+            f"failed ({exc}); it will self-generate on first boot.",
+        )
+    return redirect("node_detail", pk=pk)
+
+
 # ---------------------------------------------------------------------------
 # Bake — role-template recipe picker + per-recipe form
 # ---------------------------------------------------------------------------
@@ -1445,6 +1509,11 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         if nid not in zt_network_ids:
             zt_rows.append({"network_id": nid, "identity": ident, "orphan": True})
 
+    from tenants.zerotier import ZEROTIER_NETWORKS
+    joined_ids = {r["network_id"] for r in zt_rows}
+    zt_networks = [{**n, "joined": n["network_id"] in joined_ids}
+                   for n in ZEROTIER_NETWORKS]
+
     return render(request, "node_detail.html", {
         "node": node,
         "image_yaml": image_yaml,
@@ -1455,6 +1524,7 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "tags_csv": ", ".join(node.tags or []),
         "builds": builds,
         "zt_rows": zt_rows,
+        "zt_networks": zt_networks,
         **_node_form_options(),
     })
 

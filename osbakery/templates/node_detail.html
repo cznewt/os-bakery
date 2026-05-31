@@ -143,12 +143,33 @@
           <span>ZeroTier identities
             <span class="text-stone-400 font-mono text-xs">prepopulated per network → pillar zerotier.networks[].&#123;id, public_key, secret_key&#125;</span>
           </span>
-          {% if zt_rows %}
-          <form method="post" action="/nodes/{{ node.id }}/zerotier/generate/">
-            {% csrf_token %}
-            <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">⚡ Generate missing</button>
-          </form>
-          {% endif %}
+          <div class="flex items-center gap-2">
+            <details class="relative">
+              <summary class="cursor-pointer select-none text-sm font-medium border border-stone-300 rounded-lg px-3 py-1.5 hover:bg-stone-50 list-none">+ Join network</summary>
+              <div class="absolute right-0 mt-1 w-80 bg-white border border-stone-200 rounded-xl shadow-lg z-20 p-4">
+                <form method="post" action="/nodes/{{ node.id }}/zerotier/join/" class="space-y-3">
+                  {% csrf_token %}
+                  <div>
+                    <label class="block text-[10px] uppercase tracking-wider text-stone-500 font-medium mb-1">Network</label>
+                    <select name="network_id" required class="w-full border border-stone-300 rounded px-2 py-1.5 text-sm">
+                      {% for n in zt_networks %}<option value="{{ n.network_id }}"{% if n.joined %} disabled{% endif %}>{{ n.name }} — {{ n.cidr }}{% if n.joined %} (joined){% endif %}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] uppercase tracking-wider text-stone-500 font-medium mb-1">Member name</label>
+                    <input type="text" name="member_name" value="{{ node.minion_id }}" class="w-full border border-stone-300 rounded px-2 py-1.5 font-mono text-sm">
+                  </div>
+                  <button type="submit" class="w-full text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">Join + generate identity</button>
+                </form>
+              </div>
+            </details>
+            {% if zt_rows %}
+            <form method="post" action="/nodes/{{ node.id }}/zerotier/generate/">
+              {% csrf_token %}
+              <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">⚡ Generate missing</button>
+            </form>
+            {% endif %}
+          </div>
         </div>
         {% if zt_rows %}
         <table class="w-full text-sm">
