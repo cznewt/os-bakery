@@ -18,6 +18,8 @@ from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from osbakery.fields import EncryptedTextField
+
 
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -331,9 +333,9 @@ class Integration(TimestampedModel):
         help_text="API base URL — ZeroTier Central (https://my.zerotier.com) "
                   "or a self-hosted controller (https://<host>:9993).",
     )
-    token = models.CharField(
-        max_length=255, blank=True,
-        help_text="API token used to authorize calls. Sensitive.",
+    token = EncryptedTextField(
+        blank=True,
+        help_text="API token used to authorize calls. Encrypted at rest.",
     )
     is_active = models.BooleanField(default=True)
 

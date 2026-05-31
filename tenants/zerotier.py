@@ -70,3 +70,37 @@ def generate_identity() -> dict[str, str]:
         "public_key": public_key,
         "secret_key": secret_key,
     }
+
+
+class RegistrationError(RuntimeError):
+    """Registering/authorizing a member on the ZeroTier controller failed."""
+
+
+def register_member(*, url: str, token: str, network_id: str, member_id: str,
+                    name: str, authorize: bool = True) -> None:
+    """Register a member on a ZeroTier controller (ZeroTier Central API).
+
+    Sets the member's ``name`` and (by default) authorizes it on the network via
+    ``POST {url}/api/v1/network/<network_id>/member/<member_id>``. ``url`` +
+    ``token`` come from the tenant's :class:`tenants.models.Integration`. Raises
+    :class:`RegistrationError` on any failure; the caller treats it best-effort.
+    """
+    import requests
+
+    if not (url and token):
+        raise RegistrationError("ZeroTier controller url/token not configured.")
+    base = url.rstrip("/")
+    endpoint = f"{base}/api/v1/network/{network_id}/member/{member_id}"
+    payload: dict = {"name": name, "config": {"authorized": bool(authorize)}}
+    try:
+        resp = requests.post(
+            endpoint, json=payload, timeout=30,
+            headers={"Authorization": f"token {token}",
+                     "Content-Type": "application/json"},
+        )
+    except requests.RequestException as exc:
+        raise RegistrationError(f"ZeroTier API request failed: {exc}") from exc
+    if resp.status_code >= 400:
+        raise RegistrationError(
+            f"ZeroTier API {resp.status_code}: {resp.text[:300]}"
+        )

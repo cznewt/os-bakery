@@ -22,6 +22,11 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="dev-insecure-secret-change-me")
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
 
+# Key for at-rest field encryption (Integration.token, …). A urlsafe-base64
+# Fernet key; if unset, osbakery.fields derives one from SECRET_KEY. Set an
+# explicit key in .env to decouple secret encryption from SECRET_KEY rotation.
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------

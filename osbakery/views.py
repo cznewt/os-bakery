@@ -1010,10 +1010,11 @@ def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
     generates the identity keypair, so the network shows up in the identities
     table prepopulated. ``member_name`` defaults to the node's minion id.
     """
-    node = get_object_or_404(Node.objects.select_related("cluster"), pk=pk)
-    from tenants.models import ZerotierIdentity
+    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
+    from tenants.models import Integration, ZerotierIdentity
     from tenants.zerotier import (ZEROTIER_NETWORKS, IdtoolError,
-                                  generate_identity)
+                                  RegistrationError, generate_identity,
+                                  register_member)
 
     nid = (request.POST.get("network_id") or "").strip()
     known = {n["network_id"]: n for n in ZEROTIER_NETWORKS}
@@ -1061,6 +1062,45 @@ def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
             request,
             f"Joined {name} ({nid}) as {member_name}, but identity generation "
             f"failed ({exc}); it will self-generate on first boot.",
+        )
+        return redirect("node_detail", pk=pk)
+
+    # Best-effort: register + authorize the member on the tenant's ZeroTier
+    # controller (ZT Central), naming it member_name. Falls back to the global
+    # integration; skips quietly when none is configured.
+    tenant = node.cluster.tenant if node.cluster_id else None
+    integration = None
+    if tenant is not None:
+        integration = tenant.integrations.filter(
+            type=Integration.Type.ZEROTIER, is_active=True
+        ).first()
+    if integration is None:
+        integration = Integration.objects.filter(
+            tenant__isnull=True, type=Integration.Type.ZEROTIER, is_active=True
+        ).first()
+    if integration is None or not (integration.url and integration.token):
+        messages.info(
+            request,
+            "No ZeroTier controller configured for this tenant — skipped "
+            "controller registration (the member self-authorizes if the network "
+            "is public, otherwise authorize it manually).",
+        )
+        return redirect("node_detail", pk=pk)
+    try:
+        register_member(
+            url=integration.url, token=integration.token,
+            network_id=nid, member_id=ident["member_id"], name=member_name,
+        )
+        messages.success(
+            request,
+            f"Registered {member_name} ({ident['member_id']}) on {name} via "
+            f"{integration.name} — authorized.",
+        )
+    except RegistrationError as exc:
+        messages.warning(
+            request,
+            f"Identity stored, but controller registration failed ({exc}); "
+            "authorize the member manually on ZeroTier Central.",
         )
     return redirect("node_detail", pk=pk)
 

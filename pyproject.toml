@@ -25,6 +25,7 @@ dependencies = [
     "pydantic>=2.9",
     "markdown>=3.6",
     "whitenoise>=6.0",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]
