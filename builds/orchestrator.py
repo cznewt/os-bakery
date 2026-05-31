@@ -214,6 +214,16 @@ def _build_effective_model(build: BuildRequest) -> dict:
     if build.node_id is not None:
         model = _deep_merge(model, build.node.parameters or {})
     model = _deep_merge(model, {"options": dict(build.option_values or {})})
+    # Salt minion id — the gedu `salt` formula defaults pillar.salt.id to
+    # "minion" (and is skipped entirely without a `salt:` section), so without
+    # this every device bakes with the same id and the fleet's node-name-glob
+    # role matching breaks. Node builds take the node's minion id; ad-hoc builds
+    # fall back to the hostname option / label.
+    _opts = build.option_values or {}
+    minion_id = (build.node.minion_id if build.node_id is not None
+                 else _opts.get("minion_id") or _opts.get("hostname") or build.label)
+    if minion_id:
+        model = _deep_merge(model, {"salt": {"id": minion_id}})
     model = _deep_merge(model, {
         "osbakery": {
             "build_id": str(build.id),
