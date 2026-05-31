@@ -26,6 +26,12 @@ from django.utils import timezone
 
 from .models import Artifact, BuildEvent, BuildRequest, DownloadToken
 
+# Top-level effective-model keys that are os-bakery's own metadata, NOT salt
+# pillar / formula sections. They're stripped from the baked salt pillar (the
+# full model still lands in /etc/osbakery/model.yaml for provenance). Shared by
+# the provisioners so the "what's not pillar" rule lives in exactly one place.
+NON_PILLAR_KEYS = frozenset({"osbakery", "device", "options", "role", "vpn"})
+
 log = logging.getLogger(__name__)
 
 
@@ -262,6 +268,10 @@ def _write_pillar(ctx: BuildContext) -> None:
 
     pillar_root = Path(settings.SALT_PILLAR_ROOT)
     vendored = pillar_root.is_dir() and any(pillar_root.rglob("*.sls"))
+    # The salt pillar carries ONLY formula data — os-bakery's own metadata
+    # namespaces (device/options/osbakery/role/vpn) stay out of it. The full
+    # model is still written to model.yaml (write_model_file) for provenance.
+    salt_pillar = {k: v for k, v in pillar.items() if k not in NON_PILLAR_KEYS}
     if vendored:
         # Bake the gedu pillar tree verbatim for reference / includes.
         for f in pillar_root.rglob("*"):
@@ -280,7 +290,7 @@ def _write_pillar(ctx: BuildContext) -> None:
         # assigns it. Single-purpose image ⇒ match '*'.
         merged: dict = {}
         state_defaults = pillar_root / "state"
-        for formula in pillar:
+        for formula in salt_pillar:
             frag_file = state_defaults / formula / "init.sls"
             if not frag_file.is_file():
                 frag_file = state_defaults / f"{formula}.sls"
@@ -291,7 +301,7 @@ def _write_pillar(ctx: BuildContext) -> None:
                     frag = {}  # Jinja-templated default — skip, model still wins
                 if isinstance(frag, dict):
                     merged = _deep_merge(merged, frag)
-        merged = _deep_merge(merged, pillar)
+        merged = _deep_merge(merged, salt_pillar)
         (ctx.pillar_path / "osbakery_model.sls").write_text(
             yaml.safe_dump(merged, sort_keys=False)
         )
@@ -302,7 +312,8 @@ def _write_pillar(ctx: BuildContext) -> None:
         (ctx.pillar_path / "top.sls").write_text(
             yaml.safe_dump({"base": {"*": [rv.recipe.slug]}})
         )
-        (ctx.pillar_path / f"{rv.recipe.slug}.sls").write_text(yaml.safe_dump(pillar))
+        (ctx.pillar_path / f"{rv.recipe.slug}.sls").write_text(
+            yaml.safe_dump(salt_pillar))
 
 
 def _write_top(ctx: BuildContext) -> None:

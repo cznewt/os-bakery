@@ -113,7 +113,7 @@ def _emit_cmd(build, phase, label, cp) -> None:
 # the concrete mesh is applied via the `zerotier` formula, so `vpn` must not be
 # treated as a state (it has no SLS — it would fail highstate with "No matching
 # sls found for 'vpn'").
-_NON_STATE_KEYS = {"osbakery", "device", "options", "role", "vpn"}
+from builds.orchestrator import NON_PILLAR_KEYS as _NON_STATE_KEYS
 
 
 _SARCH = {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64", "aarch64": "aarch64"}

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _ASSISTANT = "proxmox-auto-install-assistant"
-_NON_STATE_KEYS = {"osbakery", "device", "options", "role", "vpn"}
+from builds.orchestrator import NON_PILLAR_KEYS as _NON_STATE_KEYS
 _SALT_BOOTSTRAP = ("https://github.com/saltstack/salt-bootstrap/releases/"
                    "latest/download/bootstrap-salt.sh")
 
