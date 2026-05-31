@@ -1515,3 +1515,37 @@ def bake_node(request: HttpRequest, pk: int) -> HttpResponse:
     )
     messages.success(request, f"Baking node {node.slug} — build {build.id} queued.")
     return redirect("build_log", build_id=build.id)
+
+
+def bake_node_script(request: HttpRequest) -> HttpResponse:
+    """Download scripts/bake-node.sh — bakes a live Batocera node over SSH."""
+    path = settings.BASE_DIR / "scripts" / "bake-node.sh"
+    if not path.exists():
+        raise Http404("bake-node.sh not found")
+    return FileResponse(
+        open(path, "rb"),
+        as_attachment=True,
+        filename="bake-node.sh",
+        content_type="application/x-shellscript",
+    )
+
+
+def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
+    """Per-node bake-node.sh: the live-node bake script with THIS node's salt
+    minion id baked in as the default, so running it reproduces what os-bakery
+    bakes for this node. Download from the node's Actions menu, then run against
+    the node's IP:  ./bake-<slug>.sh <node-ip>
+    """
+    node = get_object_or_404(Node, pk=pk)
+    base = settings.BASE_DIR / "scripts" / "bake-node.sh"
+    if not base.exists():
+        raise Http404("bake-node.sh not found")
+    mid = node.minion_id or node.slug
+    script = base.read_text().replace(
+        'MINION_ID="${MINION_ID:-}"',
+        f'MINION_ID="${{MINION_ID:-{mid}}}"',
+        1,
+    )
+    resp = HttpResponse(script, content_type="application/x-shellscript")
+    resp["Content-Disposition"] = f'attachment; filename="bake-{node.slug}.sh"'
+    return resp

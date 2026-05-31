@@ -25,6 +25,7 @@
         <a href="/clusters/" class="hover:text-stone-900">clusters</a>
         <a href="/baked/" class="hover:text-stone-900">baked images</a>
         <a href="/admin/tenants/node/add/" class="hover:text-stone-900">+ new node</a>
+        <a href="{% url 'bake-node-script' %}" download class="hover:text-stone-900" title="Bake a live node over SSH (root/linux): ./bake-node.sh &lt;node-ip&gt;">bake-node.sh ↓</a>
         <a href="/" class="hover:text-stone-900">← home</a>
       </nav>
     </header>
@@ -126,6 +127,7 @@
                   <summary class="cursor-pointer select-none font-medium text-stone-700 border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 inline-flex items-center gap-1">Actions ▾</summary>
                   <div class="absolute right-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-20 py-1 flex flex-col">
                     <a href="/nodes/{{ r.id }}/" class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">↗ Open</a>
+                    <a href="/nodes/{{ r.id }}/bake-node.sh" download class="px-3 py-1.5 text-stone-700 hover:bg-stone-100">⤓ bake-node.sh</a>
                     <form method="post" action="/nodes/{{ r.id }}/bake/">
                       {% csrf_token %}
                       <button type="submit" data-toast="Baking {{ r.slug }}…" data-toast-level="success"
