@@ -1548,8 +1548,6 @@ def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
     base = settings.BASE_DIR / "scripts" / "bake-node.sh"
     if not base.exists():
         raise Http404("bake-node.sh not found")
-    mid = node.minion_id or node.slug
-
     # Build the same pillar the bake writes (batocera_pkg._write_pillar): the
     # effective model minus image/identity keys, plus a pillar-driven `states`
     # list (batocera first — it configures the repos the rest install from).
@@ -1559,6 +1557,11 @@ def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
              [k for k in data if k != "batocera"]
     pillar_yaml = _yaml.safe_dump({**data, "states": states},
                                   default_flow_style=False, sort_keys=False)
+    # The salt minion id is the pillar's salt.id (set from node/cluster params),
+    # NOT the hostname. Seeding node.minion_id (= hostname) as salt.minion-id is
+    # what made the salt run correct it from the hostname back to salt.id. Read
+    # it straight from the pillar data we just rendered (single source of truth).
+    mid = (data.get("salt") or {}).get("id") or node.minion_id
 
     pillar_marker = "NEW_PILLAR=\"$(cat <<'OSBAKERY_PILLAR_EOF'\nOSBAKERY_PILLAR_EOF\n)\""
     pillar_filled = ("NEW_PILLAR=\"$(cat <<'OSBAKERY_PILLAR_EOF'\n"

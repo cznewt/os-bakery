@@ -94,8 +94,17 @@ if command -v batocera-settings-set >/dev/null 2>&1; then
 fi
 
 echo "== install-salt =="
-echo "   $SALT_PACKAGE_URL"
-pacman -U --noconfirm "$SALT_PACKAGE_URL"   # hook seeds the default pillar + minion conf, starts salt_minion
+# Skip the reinstall when misc-salt is already at the desired version (pacman -Q
+# prints "misc-salt <ver>-<rel>"; SALT_VERSION is e.g. 3007.14-6). On a fresh
+# node misc-salt is absent -> cur is empty -> install (its batoexec hook seeds
+# the default pillar + minion conf and starts salt_minion).
+cur="$(pacman -Q misc-salt 2>/dev/null | awk '{print $2}')"
+if [ "$cur" = "$SALT_VERSION" ]; then
+    echo "   misc-salt $cur already installed — skipping pacman -U"
+else
+    echo "   installing $SALT_PACKAGE_URL"
+    pacman -U --noconfirm "$SALT_PACKAGE_URL"
+fi
 
 # os-bakery injects the node's rendered pillar between the markers below (a
 # quoted heredoc, so the YAML is literal). Empty in the generic script -> keep
