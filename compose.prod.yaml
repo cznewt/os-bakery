@@ -167,8 +167,7 @@ services:
         until python manage.py migrate --noinput; do
           echo "[entry] db not ready, retrying in 3s…"; sleep 3
         done
-        echo "[entry] seeding catalog + recipes…"
-        python manage.py seed_catalog --prune --quiet
+        echo "[entry] seeding recipes (catalog is seeded manually, never on boot)…"
         python manage.py seed_recipes
         echo "[entry] launching gunicorn…"
         exec gunicorn osbakery.wsgi:application \
