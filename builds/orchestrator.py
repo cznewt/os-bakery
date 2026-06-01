@@ -248,8 +248,10 @@ def _build_effective_model(build: BuildRequest) -> dict:
         },
     })
     if build.node_id is not None:
-        from tenants.models import splice_zerotier_identities
+        from tenants.models import (splice_wireguard_identities,
+                                    splice_zerotier_identities)
         model = splice_zerotier_identities(model, build.node)
+        model = splice_wireguard_identities(model, build.node)
     return model
 
 
