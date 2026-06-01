@@ -67,11 +67,12 @@ RUN DJANGO_SECRET_KEY=build-time-dummy DATABASE_URL=sqlite:////tmp/build.sqlite3
 # ──────────────────────────────────────────────────────────────────────────────
 FROM base AS web
 
-# zerotier-idtool (ships with zerotier-one) — the "prepopulate ZeroTier
-# identity" node action shells out to it to generate per-network
-# identity.secret/.public. We only need the binary, not the running daemon, so
-# policy-rc.d blocks the postinst from starting the service at build time. The
-# binary signing key comes straight from the ZeroTier repo (signed-by, no gnupg).
+# Node-identity prepopulation tools used by the node-detail actions:
+#   - zerotier-idtool (ships with zerotier-one) → per-network identity.secret/.public
+#   - wg (wireguard-tools)                       → per-interface WireGuard keypair
+# We only need the binaries, not the running daemon, so policy-rc.d blocks the
+# postinst from starting any service at build time. wireguard-tools is in Debian
+# main; the ZeroTier signing key comes from the ZeroTier repo (signed-by, no gnupg).
 RUN . /etc/os-release \
     && install -d /usr/share/keyrings \
     && curl -fsSL "https://raw.githubusercontent.com/zerotier/ZeroTierOne/master/doc/contact%40zerotier.com.gpg" \
@@ -81,7 +82,7 @@ RUN . /etc/os-release \
     && printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
     && chmod +x /usr/sbin/policy-rc.d \
     && apt-get update \
-    && apt-get install -y --no-install-recommends zerotier-one \
+    && apt-get install -y --no-install-recommends zerotier-one wireguard-tools \
     && rm -f /usr/sbin/policy-rc.d \
     && rm -rf /var/lib/apt/lists/*
 

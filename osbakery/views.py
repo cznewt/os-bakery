@@ -947,6 +947,29 @@ def _declared_zerotier_network_ids(node) -> list[str]:
     return ids
 
 
+def _declared_wireguard_interfaces(node) -> list[dict]:
+    """WireGuard interfaces declared for a node (cluster ⊕ node params).
+
+    Returns the merged interface dicts in declared order, de-duped by ``name``
+    (node params win over cluster). Mirrors ``_declared_zerotier_network_ids``.
+    """
+    from tenants.models import _deep_merge
+
+    params = _deep_merge(node.cluster.parameters or {}, node.parameters or {})
+    ifaces = (params.get("wireguard") or {}).get("interfaces") or []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for entry in ifaces:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append(entry)
+    return out
+
+
 @require_POST
 def generate_zerotier_identity(request: HttpRequest, pk: int) -> HttpResponse:
     """Prepopulate ZeroTier identities for a node's declared networks.
@@ -1107,6 +1130,160 @@ def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
             request,
             f"Identity stored, but controller registration failed ({exc}); "
             "authorize the member manually on ZeroTier Central.",
+        )
+    return redirect("node_detail", pk=pk)
+
+
+@require_POST
+def generate_wireguard_identity(request: HttpRequest, pk: int) -> HttpResponse:
+    """Prepopulate WireGuard keypairs for a node's declared interfaces.
+
+    Runs ``wg genkey``/``wg pubkey`` per declared interface and upserts a
+    :class:`tenants.models.WireguardIdentity`. By default fills only interfaces
+    that lack a keypair; ``interface=<name>`` targets one and ``force=1``
+    regenerates an existing one. Mirrors :func:`generate_zerotier_identity`.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster"), pk=pk)
+    from tenants.models import WireguardIdentity
+    from tenants.wireguard import WgError, generate_keypair
+
+    target = (request.POST.get("interface") or "").strip()
+    force = request.POST.get("force") == "1"
+    names = [target] if target else [
+        i["name"] for i in _declared_wireguard_interfaces(node)
+    ]
+    if not names:
+        messages.warning(
+            request,
+            f"No WireGuard interfaces declared on {node.slug} — add a tunnel "
+            "(or wireguard.interfaces to the cluster/node parameters) first.",
+        )
+        return redirect("node_detail", pk=pk)
+
+    made = kept = failed = 0
+    last_pub = ""
+    for name in names:
+        existing = WireguardIdentity.objects.filter(node=node, interface=name).first()
+        if existing and existing.private_key and not (force or target):
+            kept += 1
+            continue
+        try:
+            kp = generate_keypair()
+        except WgError as exc:
+            failed += 1
+            messages.error(request, f"{name}: {exc}")
+            continue
+        WireguardIdentity.objects.update_or_create(
+            node=node, interface=name,
+            defaults={"private_key": kp["private_key"],
+                      "public_key": kp["public_key"]},
+        )
+        last_pub = kp["public_key"]
+        made += 1
+
+    if made or kept:
+        summary = f"WireGuard keypairs — generated {made}, kept {kept} existing"
+        if failed:
+            summary += f", {failed} failed"
+        if made == 1 and last_pub:
+            summary += f". Authorize this peer on the server: {last_pub}"
+        messages.success(request, summary + ".")
+    return redirect("node_detail", pk=pk)
+
+
+@require_POST
+def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
+    """Add a WireGuard tunnel to a node from the node page.
+
+    Appends an interface (with one peer — its endpoint, public key, allowed IPs)
+    to the node's ``parameters.wireguard.interfaces`` (deduped by interface name;
+    an existing interface gets the new peer appended) and immediately generates
+    this node's keypair, so the tunnel shows up prepopulated. The node's public
+    key is what you then authorize as a ``[Peer]`` on the WireGuard server/hub.
+    Mirrors :func:`node_zerotier_join`.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
+    from tenants.models import WireguardIdentity
+    from tenants.wireguard import WgError, generate_keypair
+
+    def _csv(field: str) -> list[str]:
+        raw = request.POST.get(field) or ""
+        return [v.strip() for v in raw.replace("\n", ",").split(",") if v.strip()]
+
+    name = (request.POST.get("interface") or "wg0").strip()
+    endpoint = (request.POST.get("endpoint") or "").strip()
+    peer_public_key = (request.POST.get("peer_public_key") or "").strip()
+    address = _csv("address")
+    allowed_ips = _csv("allowed_ips")
+    dns = _csv("dns")
+    keepalive = (request.POST.get("persistent_keepalive") or "").strip()
+
+    if not endpoint or not peer_public_key:
+        messages.error(request, "Peer endpoint and peer public key are required.")
+        return redirect("node_detail", pk=pk)
+
+    peer: dict = {"public_key": peer_public_key, "endpoint": endpoint}
+    if allowed_ips:
+        peer["allowed_ips"] = allowed_ips
+    if keepalive:
+        try:
+            peer["persistent_keepalive"] = int(keepalive)
+        except ValueError:
+            pass
+
+    iface: dict = {"name": name}
+    if address:
+        iface["address"] = address
+    if dns:
+        iface["dns"] = dns
+    iface["peers"] = [peer]
+
+    # Append to node.parameters.wireguard.interfaces (dedup by name; an existing
+    # interface keeps its config and gets this peer appended).
+    params = dict(node.parameters or {})
+    wg = dict(params.get("wireguard") or {})
+    ifaces = list(wg.get("interfaces") or [])
+    idx = next((i for i, e in enumerate(ifaces)
+                if isinstance(e, dict) and e.get("name") == name), None)
+    if idx is None:
+        ifaces.append(iface)
+    else:
+        merged = {**ifaces[idx],
+                  **{k: v for k, v in iface.items() if k != "peers"}}
+        merged["peers"] = list(ifaces[idx].get("peers") or []) + [peer]
+        ifaces[idx] = merged
+    wg["interfaces"] = ifaces
+    params["wireguard"] = wg
+    node.parameters = params
+    node.save(update_fields=["parameters"])
+
+    # Generate (or keep) this node's keypair for the interface.
+    existing = WireguardIdentity.objects.filter(node=node, interface=name).first()
+    if existing and existing.private_key:
+        messages.success(
+            request,
+            f"Added peer {endpoint} to {name} — kept existing keypair "
+            f"(public key {existing.public_key}).",
+        )
+        return redirect("node_detail", pk=pk)
+    try:
+        kp = generate_keypair()
+        WireguardIdentity.objects.update_or_create(
+            node=node, interface=name,
+            defaults={"private_key": kp["private_key"],
+                      "public_key": kp["public_key"]},
+        )
+        messages.success(
+            request,
+            f"Added peer {endpoint} to {name} — keypair generated. Authorize "
+            f"this node's public key on the server: {kp['public_key']}",
+        )
+    except WgError as exc:
+        messages.warning(
+            request,
+            f"Added peer {endpoint} to {name}, but keypair generation failed "
+            f"({exc}); generate it here or set "
+            "wireguard.interfaces[].private_key in the parameters.",
         )
     return redirect("node_detail", pk=pk)
 
@@ -1564,6 +1741,28 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
     zt_member_default = ((node.effective_model.get("salt") or {}).get("id")
                          or node.minion_id)
 
+    # WireGuard: declared interfaces ⊕ prepopulated keypairs (orphan keypairs for
+    # no-longer-declared interfaces are surfaced so they can be cleaned).
+    wg_identities = {i.interface: i for i in node.wireguard_identities.all()}
+    wg_rows = []
+    wg_declared: set[str] = set()
+    for iface in _declared_wireguard_interfaces(node):
+        name = iface["name"]
+        wg_declared.add(name)
+        addr = iface.get("address")
+        peers = iface.get("peers") or []
+        wg_rows.append({
+            "interface": name,
+            "address": ", ".join(addr) if isinstance(addr, list) else (addr or ""),
+            "endpoints": [p.get("endpoint") for p in peers
+                          if isinstance(p, dict) and p.get("endpoint")],
+            "identity": wg_identities.get(name),
+        })
+    for name, ident in wg_identities.items():
+        if name not in wg_declared:
+            wg_rows.append({"interface": name, "address": "", "endpoints": [],
+                            "identity": ident, "orphan": True})
+
     return render(request, "node_detail.html", {
         "node": node,
         "image_yaml": image_yaml,
@@ -1576,6 +1775,7 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "zt_rows": zt_rows,
         "zt_networks": zt_networks,
         "zt_member_default": zt_member_default,
+        "wg_rows": wg_rows,
         **_node_form_options(),
     })
 

@@ -224,6 +224,114 @@
       </section>
 
       <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-stone-200 font-medium flex items-center justify-between">
+          <span>WireGuard tunnels
+            <span class="text-stone-400 font-mono text-xs">peer endpoint declared in params → pillar wireguard.interfaces[]; node key spliced as .private_key</span>
+          </span>
+          <div class="flex items-center gap-2">
+            <a href="#add-wg" class="text-sm font-medium border border-stone-300 rounded-lg px-3 py-1.5 hover:bg-stone-50">+ Add tunnel</a>
+            {% if wg_rows %}
+            <form method="post" action="/nodes/{{ node.id }}/wireguard/generate/">
+              {% csrf_token %}
+              <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">⚡ Generate missing</button>
+            </form>
+            {% endif %}
+          </div>
+
+          {# Modal: a CSS :target overlay — opened by the #add-wg link above. #}
+          <div id="add-wg" class="modal fixed inset-0 z-50 items-center justify-center">
+            <a href="#" class="absolute inset-0 bg-stone-900/50" aria-label="Close"></a>
+            <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
+              <div class="flex items-start justify-between mb-1">
+                <h3 class="text-lg font-semibold">Add a WireGuard tunnel</h3>
+                <a href="#" class="text-stone-400 hover:text-stone-900 text-xl leading-none" aria-label="Close">&times;</a>
+              </div>
+              <p class="text-sm text-stone-500 mb-5">Declares the peer in this node's pillar and generates the node's keypair. Authorize the node's public key (shown after) as a <span class="font-mono text-xs">[Peer]</span> on the server.</p>
+              <form method="post" action="/nodes/{{ node.id }}/wireguard/add/" class="space-y-4">
+                {% csrf_token %}
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Interface</label>
+                    <input type="text" name="interface" value="wg0" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Address <span class="normal-case text-stone-400">(this node)</span></label>
+                    <input type="text" name="address" placeholder="10.13.13.5/24" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Peer endpoint <span class="text-red-500">*</span></label>
+                  <input type="text" name="endpoint" required placeholder="vpn.example.org:51820" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  <p class="text-[11px] text-stone-400 mt-1">host:port of the WireGuard server / hub this node dials.</p>
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Peer public key <span class="text-red-500">*</span></label>
+                  <input type="text" name="peer_public_key" required placeholder="base64 server [Peer] PublicKey" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Allowed IPs</label>
+                    <input type="text" name="allowed_ips" value="0.0.0.0/0" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    <p class="text-[11px] text-stone-400 mt-1">0.0.0.0/0 = full tunnel; or a subnet for split.</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Keepalive <span class="normal-case text-stone-400">(s)</span></label>
+                    <input type="text" name="persistent_keepalive" value="25" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    <p class="text-[11px] text-stone-400 mt-1">Set when behind NAT; blank to omit.</p>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">DNS <span class="normal-case text-stone-400">(optional)</span></label>
+                  <input type="text" name="dns" placeholder="10.13.13.1" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                  <a href="#" class="text-sm font-medium border border-stone-300 rounded-lg px-4 py-2 hover:bg-stone-100">Cancel</a>
+                  <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">Add + generate keypair</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% if wg_rows %}
+        <table class="w-full text-sm">
+          <thead class="text-[10px] uppercase tracking-wider font-mono text-stone-400">
+            <tr class="border-b border-stone-100">
+              <th class="text-left px-5 py-2 font-medium">interface</th>
+              <th class="text-left px-5 py-2 font-medium">address</th>
+              <th class="text-left px-5 py-2 font-medium">peer endpoint</th>
+              <th class="text-left px-5 py-2 font-medium">node public key</th>
+              <th class="px-5 py-2"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            {% for r in wg_rows %}
+            <tr>
+              <td class="px-5 py-2 font-mono text-stone-700">{{ r.interface }}{% if r.orphan %} <span class="text-amber-600 text-xs">(not declared)</span>{% endif %}</td>
+              <td class="px-5 py-2 font-mono text-stone-700">{% if r.address %}{{ r.address }}{% else %}<span class="text-stone-400">—</span>{% endif %}</td>
+              <td class="px-5 py-2 font-mono text-stone-700">{% for e in r.endpoints %}{{ e }}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="text-stone-400">—</span>{% endfor %}</td>
+              <td class="px-5 py-2">
+                {% if r.identity and r.identity.public_key %}<code class="text-xs text-stone-700 break-all" title="{{ r.identity.public_key }}">{{ r.identity.public_key }}</code>
+                <div class="text-[11px] text-emerald-700 mt-0.5">✓ private key spliced into pillar</div>
+                {% else %}<span class="text-xs text-stone-400">no keypair — generate to preset</span>{% endif %}
+              </td>
+              <td class="px-5 py-2 text-right">
+                <form method="post" action="/nodes/{{ node.id }}/wireguard/generate/"{% if r.identity and r.identity.private_key %} onsubmit="return confirm('Regenerate keypair for {{ r.interface }}? The public key changes and must be re-authorized on the server.');"{% endif %}>
+                  {% csrf_token %}
+                  <input type="hidden" name="interface" value="{{ r.interface }}">
+                  {% if r.identity and r.identity.private_key %}<input type="hidden" name="force" value="1">{% endif %}
+                  <button type="submit" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50">{% if r.identity and r.identity.private_key %}Regenerate{% else %}Generate{% endif %}</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="px-5 py-6 text-sm text-stone-500">No WireGuard tunnels yet. <a href="#add-wg" class="text-stone-700 underline">Add a tunnel</a> — set the peer endpoint + public key and the node's keypair is generated and baked into <span class="font-mono text-xs">wireguard.interfaces[]</span>.</div>
+        {% endif %}
+      </section>
+
+      <section class="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-stone-200 font-medium">Recent bakes <span class="text-stone-400 font-mono text-sm">({{ builds|length }})</span></div>
         <ol class="divide-y divide-stone-100">
           {% for b in builds %}

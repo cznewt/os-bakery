@@ -197,6 +197,55 @@ def splice_zerotier_identities(model: dict, node) -> dict:
     return new_model
 
 
+def splice_wireguard_identities(model: dict, node) -> dict:
+    """Splice a node's prepopulated WireGuard keys into the pillar.
+
+    Reads ``model['wireguard']['interfaces']`` (declared at cluster/node level)
+    and, for each interface the node has a generated :class:`WireguardIdentity`
+    for, injects the preset interface ``private_key`` the salt formula consumes::
+
+        wireguard:
+          interfaces:
+            - name: wg0
+              private_key: "<base64>"        # spliced from WireguardIdentity
+              address: ["10.13.13.5/24"]
+              peers:
+                - public_key: "<server pub>"  # declared in params
+                  endpoint:   vpn.example:51820
+                  allowed_ips: ["0.0.0.0/0"]
+
+    The node's private key stays out of the plaintext params (it lives in the
+    WireguardIdentity row, sensitive) and is only merged into the effective model
+    that gets baked. An explicit ``private_key`` already in params wins; an
+    interface with neither is left as declared (the bake then needs the key
+    supplied another way, mirroring how ZeroTier self-generates on first boot).
+    """
+    wg = model.get("wireguard")
+    if not isinstance(wg, dict):
+        return model
+    ifaces = wg.get("interfaces")
+    if not isinstance(ifaces, list):
+        return model
+
+    by_iface = {i.interface: i for i in node.wireguard_identities.all()}
+    out: list = []
+    for entry in ifaces:
+        if not isinstance(entry, dict):
+            out.append(entry)
+            continue
+        e = dict(entry)
+        ident = by_iface.get(e.get("name"))
+        if ident and ident.private_key and not e.get("private_key"):
+            e["private_key"] = ident.private_key
+        out.append(e)
+
+    new_wg = dict(wg)
+    new_wg["interfaces"] = out
+    new_model = dict(model)
+    new_model["wireguard"] = new_wg
+    return new_model
+
+
 class Node(TimestampedModel):
     """A managed unit we bake an image for.
 
@@ -305,7 +354,8 @@ class Node(TimestampedModel):
             "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
             "preset": self.preset.slug,
         }})
-        return splice_zerotier_identities(model, self)
+        model = splice_zerotier_identities(model, self)
+        return splice_wireguard_identities(model, self)
 
 
 class Integration(TimestampedModel):
@@ -400,3 +450,51 @@ class ZerotierIdentity(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.node.slug}@{self.network_id} → {self.member_id or '(ungenerated)'}"
+
+
+class WireguardIdentity(TimestampedModel):
+    """A prepopulated WireGuard keypair for one node on one interface.
+
+    Produced by ``wg genkey`` / ``wg pubkey`` (see :mod:`tenants.wireguard`).
+    Spliced into the bake pillar by :func:`splice_wireguard_identities` as
+    ``wireguard.interfaces[].private_key`` so the node boots with a known key;
+    its :attr:`public_key` is what you authorize as a ``[Peer]`` on the
+    WireGuard server/hub. The peer side (endpoint / public key / allowed IPs) is
+    declared in the node or cluster ``parameters``, not here.
+    """
+
+    node = models.ForeignKey(
+        Node,
+        on_delete=models.CASCADE,
+        related_name="wireguard_identities",
+    )
+    interface = models.CharField(
+        max_length=15,
+        help_text="WireGuard interface this keypair belongs to (e.g. wg0). "
+                  "Matches wireguard.interfaces[].name; emitted to pillar as "
+                  "that interface's private_key.",
+    )
+    private_key = models.TextField(
+        blank=True,
+        help_text="[Interface] PrivateKey (wg genkey). Spliced into the pillar. "
+                  "Sensitive.",
+    )
+    public_key = models.TextField(
+        blank=True,
+        help_text="Derived public key (wg pubkey). Authorize this as a [Peer] "
+                  "PublicKey on the WireGuard server/hub.",
+    )
+
+    class Meta:
+        ordering = ["node", "interface"]
+        verbose_name = "WireGuard identity"
+        verbose_name_plural = "WireGuard identities"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["node", "interface"],
+                name="uniq_wg_identity_node_interface",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.node.slug}@{self.interface} → {self.public_key[:16] or '(ungenerated)'}"

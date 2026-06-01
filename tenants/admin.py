@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import Cluster, Integration, Node, Tenant, ZerotierIdentity
+from .models import (Cluster, Integration, Node, Tenant, WireguardIdentity,
+                     ZerotierIdentity)
 
 
 @admin.register(Tenant)
@@ -42,4 +43,12 @@ class ZerotierIdentityAdmin(admin.ModelAdmin):
     list_display = ("node", "network_id", "member_id", "updated_at")
     list_filter = ("node__cluster__tenant", "node__cluster")
     search_fields = ("node__slug", "network_id", "member_id")
+    autocomplete_fields = ("node",)
+
+
+@admin.register(WireguardIdentity)
+class WireguardIdentityAdmin(admin.ModelAdmin):
+    list_display = ("node", "interface", "public_key", "updated_at")
+    list_filter = ("node__cluster__tenant", "node__cluster")
+    search_fields = ("node__slug", "interface", "public_key")
     autocomplete_fields = ("node",)
