@@ -1022,7 +1022,10 @@ def node_zerotier_join(request: HttpRequest, pk: int) -> HttpResponse:
         messages.error(request, "Pick a known ZeroTier network.")
         return redirect("node_detail", pk=pk)
     name = known[nid]["network_name"]
-    member_name = (request.POST.get("member_name") or "").strip() or node.minion_id
+    # Default the member name to the node's salt id (effective model), not the
+    # hostname; fall back to minion_id only when no salt.id is configured.
+    salt_id = (node.effective_model.get("salt") or {}).get("id") or node.minion_id
+    member_name = (request.POST.get("member_name") or "").strip() or salt_id
 
     # Append to node.parameters.zerotier.networks (dedup by network_id). Use the
     # normalised keys (network_name / member_name); accept legacy network/id when
@@ -1556,6 +1559,10 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
     joined_ids = {r["network_id"] for r in zt_rows}
     zt_networks = [{**n, "joined": n["network_id"] in joined_ids}
                    for n in ZEROTIER_NETWORKS]
+    # The member name defaults to the node's salt id (from the effective model),
+    # NOT the hostname — falls back to minion_id only when no salt.id is set.
+    zt_member_default = ((node.effective_model.get("salt") or {}).get("id")
+                         or node.minion_id)
 
     return render(request, "node_detail.html", {
         "node": node,
@@ -1568,6 +1575,7 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "builds": builds,
         "zt_rows": zt_rows,
         "zt_networks": zt_networks,
+        "zt_member_default": zt_member_default,
         **_node_form_options(),
     })
 

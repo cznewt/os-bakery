@@ -8,6 +8,9 @@
   <style>
     body { font-feature-settings: "ss01", "cv11"; }
     .grid-pattern { background-image: linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px); background-size: 32px 32px; }
+    /* CSS-only modal: hidden until its id is the URL :target (e.g. #join-zt). */
+    .modal { display: none; }
+    .modal:target { display: flex; }
   </style>
 </head>
 <body class="bg-stone-50 text-stone-900 min-h-screen grid-pattern">
@@ -144,31 +147,44 @@
             <span class="text-stone-400 font-mono text-xs">prepopulated per network → pillar zerotier.networks[].&#123;id, public_key, secret_key&#125;</span>
           </span>
           <div class="flex items-center gap-2">
-            <details class="relative">
-              <summary class="cursor-pointer select-none text-sm font-medium border border-stone-300 rounded-lg px-3 py-1.5 hover:bg-stone-50 list-none">+ Join network</summary>
-              <div class="absolute right-0 mt-1 w-80 bg-white border border-stone-200 rounded-xl shadow-lg z-20 p-4">
-                <form method="post" action="/nodes/{{ node.id }}/zerotier/join/" class="space-y-3">
-                  {% csrf_token %}
-                  <div>
-                    <label class="block text-[10px] uppercase tracking-wider text-stone-500 font-medium mb-1">Network</label>
-                    <select name="network_id" required class="w-full border border-stone-300 rounded px-2 py-1.5 text-sm">
-                      {% for n in zt_networks %}<option value="{{ n.network_id }}"{% if n.joined %} disabled{% endif %}>{{ n.network_name }} — {{ n.cidr }}{% if n.joined %} (joined){% endif %}</option>{% endfor %}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-[10px] uppercase tracking-wider text-stone-500 font-medium mb-1">Member name</label>
-                    <input type="text" name="member_name" value="{{ node.minion_id }}" class="w-full border border-stone-300 rounded px-2 py-1.5 font-mono text-sm">
-                  </div>
-                  <button type="submit" class="w-full text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">Join + generate identity</button>
-                </form>
-              </div>
-            </details>
+            <a href="#join-zt" class="text-sm font-medium border border-stone-300 rounded-lg px-3 py-1.5 hover:bg-stone-50">+ Join network</a>
             {% if zt_rows %}
             <form method="post" action="/nodes/{{ node.id }}/zerotier/generate/">
               {% csrf_token %}
               <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-3 py-1.5 hover:bg-stone-700">⚡ Generate missing</button>
             </form>
             {% endif %}
+          </div>
+
+          {# Modal: a CSS :target overlay — opened by the #join-zt link above. #}
+          <div id="join-zt" class="modal fixed inset-0 z-50 items-center justify-center">
+            <a href="#" class="absolute inset-0 bg-stone-900/50" aria-label="Close"></a>
+            <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
+              <div class="flex items-start justify-between mb-1">
+                <h3 class="text-lg font-semibold">Join a ZeroTier network</h3>
+                <a href="#" class="text-stone-400 hover:text-stone-900 text-xl leading-none" aria-label="Close">&times;</a>
+              </div>
+              <p class="text-sm text-stone-500 mb-5">Generates this node's identity, pre-authorizes it on the controller, and bakes the network into its pillar.</p>
+              <form method="post" action="/nodes/{{ node.id }}/zerotier/join/" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Network</label>
+                  <select name="network_id" required class="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm">
+                    {% for n in zt_networks %}<option value="{{ n.network_id }}"{% if n.joined %} disabled{% endif %}>{{ n.network_name }} — {{ n.cidr }}{% if n.joined %} (already joined){% endif %}</option>{% endfor %}
+                  </select>
+                  <p class="text-[11px] text-stone-400 mt-1">Networks already joined are disabled.</p>
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Member name</label>
+                  <input type="text" name="member_name" value="{{ zt_member_default }}" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  <p class="text-[11px] text-stone-400 mt-1">The member's name on the controller. Defaults to the node's salt id.</p>
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                  <a href="#" class="text-sm font-medium border border-stone-300 rounded-lg px-4 py-2 hover:bg-stone-100">Cancel</a>
+                  <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">Join + generate identity</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
         {% if zt_rows %}
