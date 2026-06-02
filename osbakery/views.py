@@ -81,6 +81,10 @@ OS_LOGOS: dict[str, dict[str, str]] = {
         "svg": "https://cdn.simpleicons.org/windows11/0078d4",
         "accent": "#0078d4",
     },
+    "android": {
+        "svg": "https://cdn.simpleicons.org/android/3ddc84",
+        "accent": "#3ddc84",
+    },
 }
 
 
@@ -220,6 +224,9 @@ _BRAND_LOGO_BY_PREFIX: list[tuple[str, str, str]] = [
     ("vm-hyperv",   "https://cdn.simpleicons.org/microsoft/0078d4",    "0078d4"),
     ("pc-amd64",    "https://cdn.simpleicons.org/intel/0071c5",        "0071c5"),
     ("pc-arm64","https://cdn.simpleicons.org/arm/0091bd",         "0091bd"),
+    # Mobile (Android phones / tablets)
+    ("phone-",      "https://cdn.simpleicons.org/android/3ddc84",       "3ddc84"),
+    ("tablet-",     "https://cdn.simpleicons.org/android/3ddc84",       "3ddc84"),
 ]
 
 

@@ -166,6 +166,7 @@ class OperatingSystem(TimestampedModel):
         SERVER = "server", _("Server")
         EMBEDDED = "embedded", _("Embedded")
         IOT = "iot", _("IoT")
+        MOBILE = "mobile", _("Mobile")
 
     slug = models.SlugField(unique=True, help_text="e.g. batocera, raspios, ubuntu")
     name = models.CharField(max_length=120)

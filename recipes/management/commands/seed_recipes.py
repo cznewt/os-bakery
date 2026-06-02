@@ -404,6 +404,29 @@ RECIPES: list[dict[str, Any]] = [
              "help_text": "IANA tz name, e.g. `Europe/Prague`."},
         ],
     },
+    # ---- Android — phones / tablets registered as nodes (not baked) ----
+    {
+        "slug": "android-phone",
+        "name": "Android · Phone",
+        "summary": "Register an Android phone or tablet as a node — for VPN / "
+                   "device management (e.g. setting up a WireGuard client). "
+                   "os-bakery doesn't image Android, so nothing is baked.",
+        "os_slug": "android",
+        "hardware_slugs": ["phone-arm64", "tablet-arm64"],
+        # No provisioner — these devices aren't imaged by os-bakery.
+        "provisioner": None,
+        "version": "1.0.0",
+        "salt_states": [],
+        "pillar_overrides": {},
+        "options": [
+            {"key": "hostname", "label": "Device name", "kind": "string",
+             "required": True, "default": "phone-1", "sort_order": 10,
+             "help_text": "Used as the node id / WireGuard client name."},
+            {"key": "device_model", "label": "Model", "kind": "string",
+             "sort_order": 20,
+             "help_text": "Optional — e.g. 'Pixel 8' or 'Galaxy Tab S9'."},
+        ],
+    },
     # ---- ESPHome — firmware images for ESP32 / ESP8266 devices ----
     # Each recipe maps to a packages/device/<vendor>/<device>.yaml file in
     # https://github.com/Craftama/esphome-models (cloned into BUILD_WORK_ROOT

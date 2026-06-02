@@ -51,6 +51,7 @@ CHANGELOG_URLS: dict[str, str] = {
     "proxmox-ve": "https://pve.proxmox.com/wiki/Roadmap",
     "esphome": "https://esphome.io/changelog/",
     "windows": "https://learn.microsoft.com/windows/release-health/",
+    "android": "https://developer.android.com/about/versions",
 }
 
 
@@ -326,6 +327,16 @@ HARDWARE_TARGETS: list[TargetSeed] = [
                      "via the per-device build on batocera.org/download. "
                      "Odin 2 / Odin 2 Mini / Odin 2 Pro share this target.",
                image_url="https://batocera.org/images/download/odin2.png"),
+    # ---- Mobile (Android phones / tablets) -----------------------------
+    # arm64 + custom boot (Android's own bootloader). These are registered as
+    # nodes for VPN / device management — os-bakery doesn't image them, so they
+    # have no OSRelease / UpstreamImage rows.
+    TargetSeed("phone-arm64", "Android phone (ARM64)", "arm64", "custom",
+               soc="ARM64 SoC (Snapdragon / Tensor / Exynos / MediaTek)",
+               notes="Generic ARM64 Android smartphone."),
+    TargetSeed("tablet-arm64", "Android tablet (ARM64)", "arm64", "custom",
+               soc="ARM64 SoC (Snapdragon / Tensor / Exynos / MediaTek)",
+               notes="Generic ARM64 Android tablet."),
     # ---- ESPHome microcontroller targets -------------------------------
     TargetSeed("esp32", "Espressif ESP32", "xtensa", "custom",
                soc="ESP32 (Xtensa LX6, 240 MHz dual-core, Wi-Fi + BLE)",
@@ -455,6 +466,11 @@ OPERATING_SYSTEMS: list[OSSeed] = [
            summary="Apple macOS. Installer downloads (InstallAssistant / IPSW) "
                    "are gated, so URLs are placeholders; the macos salt formula "
                    "applies locale, users and packages on first boot."),
+    OSSeed("android", "Android", "Google / AOSP", "mobile",
+           homepage="https://www.android.com",
+           summary="Google Android for phones and tablets. os-bakery doesn't "
+                   "image Android — it's modelled so phones/tablets can be "
+                   "registered as nodes (e.g. to set up a WireGuard client)."),
 ]
 
 RELEASES: list[ReleaseSeed] = [
