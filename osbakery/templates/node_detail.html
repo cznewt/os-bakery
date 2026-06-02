@@ -331,7 +331,8 @@
               </td>
               <td class="px-5 py-2">
                 <div class="flex items-center justify-end gap-2">
-                  {% if r.identity and r.identity.private_key %}<a href="/nodes/{{ node.id }}/wireguard/ps1/" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50" title="Windows PowerShell setup: installs WireGuard if missing, writes + activates this tunnel">Windows .ps1</a>{% endif %}
+                  {% if r.identity and r.identity.private_key %}<a href="/nodes/{{ node.id }}/wireguard/android/" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50" title="Android setup: scannable QR of this tunnel for the WireGuard app (+ .conf for iOS/macOS/Linux)">Android</a>
+                  <a href="/nodes/{{ node.id }}/wireguard/ps1/" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50" title="Windows PowerShell setup: installs WireGuard if missing, writes + activates this tunnel">Windows .ps1</a>{% endif %}
                   <form method="post" action="/nodes/{{ node.id }}/wireguard/generate/"{% if r.identity and r.identity.private_key %} onsubmit="return confirm('Regenerate keypair for {{ r.interface }}? The public key changes and must be re-authorized on the server.');"{% endif %}>
                     {% csrf_token %}
                     <input type="hidden" name="interface" value="{{ r.interface }}">

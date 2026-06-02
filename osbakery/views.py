@@ -1397,21 +1397,24 @@ Write-Host "WireGuard tunnel '$Tunnel' installed and activated."
             .replace("__CONF__", conf.strip()))
 
 
-def node_wireguard_ps1(request: HttpRequest, pk: int) -> HttpResponse:
-    """Per-node Windows PowerShell init script that installs WireGuard (if
-    missing) and brings up the node's tunnel. For controller-backed peers the
-    full config (incl the wg-easy PresharedKey) is fetched live from the
-    controller; otherwise it's built from the node's params + WireguardIdentity.
+def _wireguard_node_conf(node) -> tuple[str | None, str | None, str | None]:
+    """Build the wg-quick config for a node's first declared WireGuard tunnel.
+
+    Returns ``(interface_name, conf_text, error)``. On success ``error`` is
+    ``None``; on failure ``interface_name``/``conf_text`` are ``None`` and
+    ``error`` is a user-facing message. Shared by the per-client setup views
+    (Windows ``.ps1``, raw ``.conf`` download, Android QR). For controller-backed
+    peers the full config (incl the wg-easy PresharedKey) is fetched live from
+    the controller; otherwise it's assembled from the node's params + the stored
+    WireguardIdentity.
     """
-    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
     from catalog.models import WireguardPeer
     from tenants.models import WireguardIdentity
     from tenants.wireguard import WgRegisterError, get_client_config
 
     ifaces = _declared_wireguard_interfaces(node)
     if not ifaces:
-        messages.error(request, f"{node.slug} has no WireGuard tunnel — attach a peer first.")
-        return redirect("node_detail", pk=pk)
+        return None, None, f"{node.slug} has no WireGuard tunnel — attach a peer first."
     iface = ifaces[0]
     name = iface.get("name") or "wg0"
     peer_pubs = [p.get("public_key") for p in (iface.get("peers") or [])
@@ -1423,40 +1426,96 @@ def node_wireguard_ps1(request: HttpRequest, pk: int) -> HttpResponse:
             conf = get_client_config(url=wgp.controller.url, password=wgp.controller.token,
                                      name=node.minion_id)
         except WgRegisterError as exc:
-            messages.error(request, f"Could not fetch the tunnel config from the controller: {exc}")
-            return redirect("node_detail", pk=pk)
-    else:
-        ident = WireguardIdentity.objects.filter(node=node, interface=name).first()
-        if not (ident and ident.private_key):
-            messages.error(request, f"No keypair for {name} on {node.slug} — generate it first.")
-            return redirect("node_detail", pk=pk)
-        addr = iface.get("address")
-        addr = ", ".join(addr) if isinstance(addr, list) else (addr or "")
-        dns = iface.get("dns")
-        dns = ", ".join(dns) if isinstance(dns, list) else (dns or "")
-        lines = ["[Interface]", f"PrivateKey = {ident.private_key}"]
-        if addr:
-            lines.append(f"Address = {addr}")
-        if dns:
-            lines.append(f"DNS = {dns}")
-        for p in (iface.get("peers") or []):
-            if not isinstance(p, dict):
-                continue
-            lines += ["", "[Peer]", f"PublicKey = {p.get('public_key', '')}"]
-            aips = p.get("allowed_ips")
-            aips = ", ".join(aips) if isinstance(aips, list) else (aips or "")
-            if aips:
-                lines.append(f"AllowedIPs = {aips}")
-            if p.get("endpoint"):
-                lines.append(f"Endpoint = {p['endpoint']}")
-            if p.get("persistent_keepalive"):
-                lines.append(f"PersistentKeepalive = {p['persistent_keepalive']}")
-        conf = "\n".join(lines)
+            return None, None, f"Could not fetch the tunnel config from the controller: {exc}"
+        return name, conf, None
 
+    ident = WireguardIdentity.objects.filter(node=node, interface=name).first()
+    if not (ident and ident.private_key):
+        return None, None, f"No keypair for {name} on {node.slug} — generate it first."
+    addr = iface.get("address")
+    addr = ", ".join(addr) if isinstance(addr, list) else (addr or "")
+    dns = iface.get("dns")
+    dns = ", ".join(dns) if isinstance(dns, list) else (dns or "")
+    lines = ["[Interface]", f"PrivateKey = {ident.private_key}"]
+    if addr:
+        lines.append(f"Address = {addr}")
+    if dns:
+        lines.append(f"DNS = {dns}")
+    for p in (iface.get("peers") or []):
+        if not isinstance(p, dict):
+            continue
+        lines += ["", "[Peer]", f"PublicKey = {p.get('public_key', '')}"]
+        aips = p.get("allowed_ips")
+        aips = ", ".join(aips) if isinstance(aips, list) else (aips or "")
+        if aips:
+            lines.append(f"AllowedIPs = {aips}")
+        if p.get("endpoint"):
+            lines.append(f"Endpoint = {p['endpoint']}")
+        if p.get("persistent_keepalive"):
+            lines.append(f"PersistentKeepalive = {p['persistent_keepalive']}")
+    return name, "\n".join(lines), None
+
+
+def node_wireguard_ps1(request: HttpRequest, pk: int) -> HttpResponse:
+    """Per-node Windows PowerShell init script that installs WireGuard (if
+    missing) and brings up the node's tunnel."""
+    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
+    name, conf, error = _wireguard_node_conf(node)
+    if error:
+        messages.error(request, error)
+        return redirect("node_detail", pk=pk)
     resp = HttpResponse(_render_wireguard_ps1(node, name, conf),
                         content_type="text/plain; charset=utf-8")
     resp["Content-Disposition"] = f'attachment; filename="{node.slug}-wireguard.ps1"'
     return resp
+
+
+def node_wireguard_conf(request: HttpRequest, pk: int) -> HttpResponse:
+    """Raw wg-quick ``.conf`` for the node's tunnel — the universal client format.
+
+    The WireGuard app on Android/iOS imports it ("Import from file or archive")
+    and wg-quick on Linux/macOS runs it directly. Carries the node's private key.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
+    name, conf, error = _wireguard_node_conf(node)
+    if error:
+        messages.error(request, error)
+        return redirect("node_detail", pk=pk)
+    resp = HttpResponse(conf.strip() + "\n", content_type="text/plain; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="{node.slug}-{name}.conf"'
+    return resp
+
+
+def node_wireguard_android(request: HttpRequest, pk: int) -> HttpResponse:
+    """Android setup page: a scannable QR of the wg-quick config (the WireGuard
+    Android app's "Scan from QR code" flow), plus a ``.conf`` download fallback.
+
+    The QR is rendered server-side (``segno``, pure-Python) so the private key
+    never leaves for a third-party script. If ``segno`` isn't installed the page
+    still works — it degrades to the ``.conf`` download + manual import steps.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
+    name, conf, error = _wireguard_node_conf(node)
+    if error:
+        messages.error(request, error)
+        return redirect("node_detail", pk=pk)
+    conf = conf.strip()
+    qr_svg = None
+    try:
+        import io
+
+        import segno
+
+        buff = io.StringIO()
+        # error="m" keeps the QR scannable for the longish wg-quick payload;
+        # xmldecl off so the <svg> embeds inline in the page.
+        segno.make(conf, error="m").save(buff, kind="svg", scale=4, border=2, xmldecl=False)
+        qr_svg = buff.getvalue()
+    except Exception:
+        qr_svg = None
+    return render(request, "node_wireguard_android.html", {
+        "node": node, "interface": name, "conf": conf, "qr_svg": qr_svg,
+    })
 
 
 # ---------------------------------------------------------------------------
