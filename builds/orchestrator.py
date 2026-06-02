@@ -433,16 +433,20 @@ def _mount_and_provision(ctx: BuildContext) -> None:
 
 
 def _pack(ctx: BuildContext) -> Path:
-    """Compress the customized image to ``img.xz`` for distribution.
+    """Compress the customized image to ``img.zst`` for distribution.
 
+    Uses ``zstd -T0 -19 --long`` — near-xz ratio at a fraction of the time. The
+    full-game batocera images are ~18 GB; xz (capped at PACKER_CPUS) took
+    ~45 min/node and a single pack could starve the host. zstd is multithreaded
+    and far faster; ``.zst`` flashes fine with RPi Imager / ``zstd -d`` | dd.
     Bootable ISOs (Proxmox auto-install) are published raw so they can be
     flashed to USB directly without a decompress step.
     """
     if ctx.target_image.suffix == ".iso":
         return ctx.target_image
-    compressed = ctx.target_image.with_suffix(ctx.target_image.suffix + ".xz")
-    # xz -T0 keeps it fast on big rigs; -9e for tighter compression in CI.
-    _run(["xz", "-T0", "-z", "-f", str(ctx.target_image)])
+    compressed = ctx.target_image.with_suffix(ctx.target_image.suffix + ".zst")
+    _run(["zstd", "-T0", "-19", "--long", "-q", "-f", "--rm",
+          str(ctx.target_image), "-o", str(compressed)])
     return compressed
 
 
@@ -503,13 +507,17 @@ def _publish(ctx: BuildContext, packed: Path) -> Artifact:
     with packed.open("rb") as fh:
         storage.save(target_key, fh)
 
-    media_type = "application/x-xz" if packed.suffix == ".xz" else "application/octet-stream"
+    media_type = {".xz": "application/x-xz", ".zst": "application/zstd",
+                  ".gz": "application/gzip"}.get(packed.suffix, "application/octet-stream")
+    # Stored as a literal so adding a format needs no enum/migration churn; falls
+    # back to the IMG_XZ choice for the legacy extension.
+    fmt = {".zst": "img.zst", ".gz": "img.gz"}.get(packed.suffix, Artifact.Format.IMG_XZ)
     expires = timezone.now() + timezone.timedelta(days=30)
     artifact = Artifact.objects.create(
         build=ctx.build,
         storage_key=target_key,
         filename=friendly,
-        format=Artifact.Format.IMG_XZ,
+        format=fmt,
         size_bytes=size,
         sha256=digest,
         media_type=media_type,

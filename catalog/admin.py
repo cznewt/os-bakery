@@ -7,6 +7,7 @@ from .models import (
     OSRelease,
     Provisioner,
     UpstreamImage,
+    WireguardPeer,
     WorkflowStep,
 )
 
@@ -89,3 +90,10 @@ class UpstreamImageAdmin(admin.ModelAdmin):
     list_filter = ("format", "release__operating_system", "hardware_target")
     search_fields = ("source_url", "variant", "checksum_sha256")
     readonly_fields = ("checksum_sha256", "size_bytes", "last_synced_at")
+
+
+@admin.register(WireguardPeer)
+class WireguardPeerAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "endpoint", "interface", "is_active")
+    list_filter = ("is_active", "interface")
+    search_fields = ("slug", "name", "endpoint_host", "public_key")

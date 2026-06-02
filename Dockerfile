@@ -42,6 +42,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         libpq5 \
+        zstd \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -56,9 +56,22 @@ class BakeProvisionError(RuntimeError):
 _SERVICES = ["salt_minion", "alloy", "textfile_collector"]
 
 # Extra SHARE headroom (MiB) for the bake-time package installs (salt + alloy +
-# zerotier + the pacman cache). The fresh batocera SHARE is tiny and self-grows
-# on first boot, so we grow it here. Tune if installs hit ENOSPC.
-_GROW_MIB = 1024
+# zerotier + the games/bios/wine pacman cache). The fresh batocera SHARE is tiny
+# and self-grows on first boot, so we grow it here. Resolved at bake time from
+# the per-build ``grow_mib`` option, else ``settings.BAKE_GROW_MIB`` (set in the
+# .env — tune with no rebuild), else the default below. Bump if installs ENOSPC.
+# Empty space compresses away in the packed .img.xz, so a generous grow is cheap.
+_GROW_MIB_DEFAULT = 8192
+
+
+def _grow_mib(build) -> int:
+    opt = (build.option_values or {}).get("grow_mib")
+    if opt:
+        try:
+            return int(opt)
+        except (TypeError, ValueError):
+            pass
+    return int(getattr(settings, "BAKE_GROW_MIB", _GROW_MIB_DEFAULT) or _GROW_MIB_DEFAULT)
 
 
 def _emit(build, phase, message, level="info", **data):
@@ -231,11 +244,19 @@ def _download(url: str, dest: Path) -> str | None:
 
 def _seed_minion_id(ctx: "BuildContext", system: Path) -> str:
     """Seed ``salt.minion-id`` into batocera.conf before the salt run so the
-    minion + alloy service pick up the right id. The repos themselves are
-    configured by the ``batocera`` formula during the apply, not here.
+    minion + alloy service (and ``grains.id``) pick up the right id.
+
+    Prefer the effective model's ``salt.id`` so the seeded id matches what the
+    package's minion conf renders (``id: {{ pillar.salt.get('id', grains.id) }}``)
+    — otherwise the seed (hostname) and the rendered conf (salt.id) disagree. The
+    option hostname/label is only a fallback when no salt.id resolved. The repos
+    themselves are configured by the ``batocera`` formula during the apply.
     """
+    model = ctx.effective_model or {}
+    salt_block = model.get("salt") if isinstance(model.get("salt"), dict) else {}
     opts = ctx.build.option_values or {}
-    minion_id = (opts.get("minion_id") or opts.get("hostname")
+    minion_id = ((salt_block or {}).get("id")
+                 or opts.get("minion_id") or opts.get("hostname")
                  or ctx.build.label or f"osbakery-{ctx.build.id}")
     conf = system / "batocera.conf"
     kept = [ln for ln in (conf.read_text().splitlines() if conf.is_file() else [])
@@ -467,12 +488,13 @@ def provision(ctx: "BuildContext") -> bool:
     # first boot); the bake-time package installs (salt + alloy + zerotier +
     # pacman cache) don't fit. So grow the image file + SHARE partition here,
     # before mounting, then resize its fs.
-    grow_by = _GROW_MIB * 1024 * 1024
+    grow_mib = _grow_mib(build)
+    grow_by = grow_mib * 1024 * 1024
     img_before = ctx.target_image.stat().st_size
     _emit(build, "grow",
           f"Growing image {img_before // (1024*1024)} → "
-          f"{(img_before+grow_by) // (1024*1024)} MiB (+{_GROW_MIB} MiB for "
-          "bake-time installs).", grow_mib=_GROW_MIB)
+          f"{(img_before+grow_by) // (1024*1024)} MiB (+{grow_mib} MiB for "
+          "bake-time installs).", grow_mib=grow_mib)
     ls._sh(["truncate", "-s", f"+{grow_by}", str(ctx.target_image)])
 
     lo: str | None = None

@@ -46,7 +46,7 @@
         <table class="w-full text-sm">
           <thead class="bg-stone-50/50 text-xs uppercase tracking-wider text-stone-500">
             <tr>
-              <th class="text-left px-6 py-3 font-medium">Recipe</th>
+              <th class="text-left px-6 py-3 font-medium">Node</th>
               <th class="text-left px-4 py-3 font-medium">Target</th>
               <th class="text-left px-4 py-3 font-medium">Base image</th>
               <th class="text-left px-4 py-3 font-medium">Cluster</th>
@@ -61,8 +61,12 @@
             {% for r in rows %}
             <tr>
               <td class="px-6 py-3 font-mono whitespace-nowrap">
-                <div>{{ r.recipe }}</div>
-                {% if r.label %}<div class="text-xs text-stone-400">{{ r.label }}</div>{% endif %}
+                {% if r.label %}
+                  <div>{{ r.label }}</div>
+                  <div class="text-xs text-stone-400">{{ r.recipe }}</div>
+                {% else %}
+                  <div>{{ r.recipe }}</div>
+                {% endif %}
               </td>
               <td class="px-4 py-3 font-mono">{{ r.target }}</td>
               <td class="px-4 py-3 whitespace-nowrap font-mono text-stone-700">

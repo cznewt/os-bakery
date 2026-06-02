@@ -338,3 +338,59 @@ class UpstreamImage(TimestampedModel):
         if self.cache_storage_key and base and bucket:
             return f"{base.rstrip('/')}/{bucket}/{self.cache_storage_key}"
         return ""
+
+
+class WireguardPeer(TimestampedModel):
+    """A selectable remote WireGuard peer — the server/endpoint side a device
+    dials into; the WG analogue of a ZeroTier network.
+
+    Attaching one to a node expands at bake into ``wireguard.interfaces[].peers[]``
+    in the pillar (``public_key`` + ``endpoint`` + ``allowed_ips``), while the
+    node's own ``[Interface] PrivateKey`` is spliced from its
+    ``tenants.WireguardIdentity`` (and that node's public key is what you
+    authorize as a ``[Peer]`` on this server). ``allowed_ips`` carries the
+    subnets routed through the tunnel — e.g. the kube node host LAN so host IPs
+    are reachable, or ``0.0.0.0/0`` for a full tunnel.
+    """
+
+    slug = models.SlugField(unique=True, help_text="e.g. gedu-prg, newt-prg.")
+    name = models.CharField(max_length=120)
+    interface = models.CharField(
+        max_length=32, default="wg0",
+        help_text="Local WireGuard interface on the device; matches "
+                  "tenants.WireguardIdentity.interface and wireguard.interfaces[].name.",
+    )
+    endpoint_host = models.CharField(
+        max_length=255,
+        help_text="Public FQDN/IP clients dial (WAN side of the UDP forward), "
+                  "e.g. lab.geekedu.eu.",
+    )
+    endpoint_port = models.PositiveIntegerField(default=51820)
+    public_key = models.TextField(
+        blank=True,
+        help_text="Server's WireGuard public key (the [Peer] PublicKey clients use). "
+                  "Blank until the endpoint is up; read via `wg show`.",
+    )
+    allowed_ips = models.JSONField(
+        default=list, blank=True,
+        help_text='Subnets routed through the tunnel, e.g. '
+                  '["10.50.61.0/24", "10.13.13.0/24"] (split) or ["0.0.0.0/0"] (full).',
+    )
+    persistent_keepalive = models.PositiveIntegerField(
+        default=25, help_text="Seconds; keeps NAT open from behind-NAT devices. 0 = off.",
+    )
+    dns = models.JSONField(
+        default=list, blank=True, help_text="Optional DNS servers pushed for the tunnel.",
+    )
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["slug"]
+
+    def __str__(self) -> str:
+        return f"{self.slug} → {self.endpoint}"
+
+    @property
+    def endpoint(self) -> str:
+        return f"{self.endpoint_host}:{self.endpoint_port}"

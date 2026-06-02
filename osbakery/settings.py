@@ -140,6 +140,12 @@ CELERY_TASK_ROUTES = {
 }
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Redis re-delivers an un-acked task after visibility_timeout (default 3600 s).
+# With acks_late, a bake isn't acked until it finishes, so any build longer than
+# that gets re-queued and re-run — duplicate "Growing image"/pack loops every
+# ~hour. Batocera full-game packs can exceed 1 h, so push it well past any bake.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 43200}  # 12 h
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {"visibility_timeout": 43200}
 
 # ---------------------------------------------------------------------------
 # Storage for produced image artifacts
@@ -231,6 +237,12 @@ SALT_MINION_VERSION = env("SALT_MINION_VERSION", default="3007")
 # (``SALT_PACKAGE_URLS`` in the x-django-env anchor); per-build override via the
 # ``salt_package_url`` option. Empty here so the env/compose is the source.
 SALT_PACKAGE_URLS = env.json("SALT_PACKAGE_URLS", default={})
+
+# Extra SHARE/userdata headroom (MiB) the batocera bake grows the image by before
+# installing packages (salt + alloy + the games/bios/wine pacman cache). The
+# gedu game set needs several GB; 1 GB ENOSPCs. Tune via the .env without an
+# image rebuild; per-build override via the ``grow_mib`` option.
+BAKE_GROW_MIB = env.int("BAKE_GROW_MIB", default=8192)
 
 # ---------------------------------------------------------------------------
 # Logging
