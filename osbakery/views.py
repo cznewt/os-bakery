@@ -17,7 +17,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from builds.models import BuildRequest
-from catalog.models import HardwareTarget, OperatingSystem, OSRelease, UpstreamImage
+from catalog.models import (
+    HardwareTarget,
+    OperatingSystem,
+    OSRelease,
+    UpstreamImage,
+    WireguardPeer,
+)
 from recipes.models import Recipe
 from tenants.models import Cluster, Node
 
@@ -1210,17 +1216,45 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
         raw = request.POST.get(field) or ""
         return [v.strip() for v in raw.replace("\n", ",").split(",") if v.strip()]
 
-    name = (request.POST.get("interface") or "wg0").strip()
-    endpoint = (request.POST.get("endpoint") or "").strip()
-    peer_public_key = (request.POST.get("peer_public_key") or "").strip()
+    # Preferred path: pick a WireguardPeer from the catalog (the WG analogue of
+    # selecting a ZeroTier network) — its endpoint/public_key/allowed_ips fill in.
+    # The per-node tunnel address stays a form field. Free-form fields remain a
+    # fallback for ad-hoc peers not in the catalog.
     address = _csv("address")
-    allowed_ips = _csv("allowed_ips")
-    dns = _csv("dns")
-    keepalive = (request.POST.get("persistent_keepalive") or "").strip()
-
-    if not endpoint or not peer_public_key:
-        messages.error(request, "Peer endpoint and peer public key are required.")
-        return redirect("node_detail", pk=pk)
+    peer_slug = (request.POST.get("wireguard_peer") or "").strip()
+    if peer_slug:
+        from catalog.models import WireguardPeer
+        wgp = WireguardPeer.objects.filter(slug=peer_slug, is_active=True).first()
+        if wgp is None:
+            messages.error(request, f"WireGuard peer '{peer_slug}' not found.")
+            return redirect("node_detail", pk=pk)
+        if not wgp.public_key:
+            messages.error(
+                request,
+                f"Peer '{wgp.slug}' has no public key yet (endpoint not up?) — "
+                "fill it in on the WireguardPeer first.",
+            )
+            return redirect("node_detail", pk=pk)
+        name = wgp.interface or "wg0"
+        endpoint = wgp.endpoint
+        peer_public_key = wgp.public_key
+        allowed_ips = list(wgp.allowed_ips or [])
+        dns = list(wgp.dns or [])
+        keepalive = str(wgp.persistent_keepalive or "")
+    else:
+        name = (request.POST.get("interface") or "wg0").strip()
+        endpoint = (request.POST.get("endpoint") or "").strip()
+        peer_public_key = (request.POST.get("peer_public_key") or "").strip()
+        allowed_ips = _csv("allowed_ips")
+        dns = _csv("dns")
+        keepalive = (request.POST.get("persistent_keepalive") or "").strip()
+        if not endpoint or not peer_public_key:
+            messages.error(
+                request,
+                "Select a WireGuard peer from the catalog, or enter a peer "
+                "endpoint + public key.",
+            )
+            return redirect("node_detail", pk=pk)
 
     peer: dict = {"public_key": peer_public_key, "endpoint": endpoint}
     if allowed_ips:
@@ -1776,6 +1810,9 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "zt_networks": zt_networks,
         "zt_member_default": zt_member_default,
         "wg_rows": wg_rows,
+        "wireguard_peers": list(
+            WireguardPeer.objects.filter(is_active=True).order_by("slug")
+        ),
         **_node_form_options(),
     })
 

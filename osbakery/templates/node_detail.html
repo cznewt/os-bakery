@@ -249,41 +249,55 @@
               <p class="text-sm text-stone-500 mb-5">Declares the peer in this node's pillar and generates the node's keypair. Authorize the node's public key (shown after) as a <span class="font-mono text-xs">[Peer]</span> on the server.</p>
               <form method="post" action="/nodes/{{ node.id }}/wireguard/add/" class="space-y-4">
                 {% csrf_token %}
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Interface</label>
-                    <input type="text" name="interface" value="wg0" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
-                  </div>
-                  <div>
-                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Address <span class="normal-case text-stone-400">(this node)</span></label>
-                    <input type="text" name="address" placeholder="10.13.13.5/24" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
-                  </div>
-                </div>
+                {% if wireguard_peers %}
                 <div>
-                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Peer endpoint <span class="text-red-500">*</span></label>
-                  <input type="text" name="endpoint" required placeholder="vpn.example.org:51820" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
-                  <p class="text-[11px] text-stone-400 mt-1">host:port of the WireGuard server / hub this node dials.</p>
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">WireGuard peer <span class="normal-case text-stone-400">(from catalog)</span></label>
+                  <select name="wireguard_peer" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    <option value="">— select a peer —</option>
+                    {% for p in wireguard_peers %}
+                    <option value="{{ p.slug }}">{{ p.slug }} — {{ p.endpoint }}{% if not p.public_key %} (no key yet){% endif %}</option>
+                    {% endfor %}
+                  </select>
+                  <p class="text-[11px] text-stone-400 mt-1">Endpoint, public key + allowed IPs come from the selected peer (the WG analogue of joining a ZeroTier network). Manage them in the <a href="/admin/catalog/wireguardpeer/" class="underline">WireguardPeer catalog</a>.</p>
                 </div>
+                {% else %}
+                <p class="text-[11px] text-stone-400">No WireguardPeers in the catalog yet — <a href="/admin/catalog/wireguardpeer/add/" class="underline">add one</a>, or enter an ad-hoc peer below.</p>
+                {% endif %}
                 <div>
-                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Peer public key <span class="text-red-500">*</span></label>
-                  <input type="text" name="peer_public_key" required placeholder="base64 server [Peer] PublicKey" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Address <span class="normal-case text-stone-400">(this node, on the tunnel)</span></label>
+                  <input type="text" name="address" placeholder="10.13.13.5/24" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Allowed IPs</label>
-                    <input type="text" name="allowed_ips" value="0.0.0.0/0" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
-                    <p class="text-[11px] text-stone-400 mt-1">0.0.0.0/0 = full tunnel; or a subnet for split.</p>
+                <details class="border-t border-stone-200 pt-3">
+                  <summary class="text-xs uppercase tracking-wider text-stone-500 font-medium cursor-pointer">…or enter an ad-hoc peer manually</summary>
+                  <div class="space-y-3 mt-3">
+                    <div>
+                      <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Interface</label>
+                      <input type="text" name="interface" value="wg0" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    </div>
+                    <div>
+                      <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Peer endpoint</label>
+                      <input type="text" name="endpoint" placeholder="vpn.example.org:51820" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    </div>
+                    <div>
+                      <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Peer public key</label>
+                      <input type="text" name="peer_public_key" placeholder="base64 server [Peer] PublicKey" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Allowed IPs</label>
+                        <input type="text" name="allowed_ips" value="0.0.0.0/0" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                      </div>
+                      <div>
+                        <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Keepalive <span class="normal-case text-stone-400">(s)</span></label>
+                        <input type="text" name="persistent_keepalive" value="25" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">DNS <span class="normal-case text-stone-400">(optional)</span></label>
+                      <input type="text" name="dns" placeholder="10.13.13.1" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                    </div>
                   </div>
-                  <div>
-                    <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Keepalive <span class="normal-case text-stone-400">(s)</span></label>
-                    <input type="text" name="persistent_keepalive" value="25" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
-                    <p class="text-[11px] text-stone-400 mt-1">Set when behind NAT; blank to omit.</p>
-                  </div>
-                </div>
-                <div>
-                  <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">DNS <span class="normal-case text-stone-400">(optional)</span></label>
-                  <input type="text" name="dns" placeholder="10.13.13.1" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
-                </div>
+                </details>
                 <div class="flex items-center justify-end gap-2 pt-2">
                   <a href="#" class="text-sm font-medium border border-stone-300 rounded-lg px-4 py-2 hover:bg-stone-100">Cancel</a>
                   <button type="submit" class="text-sm font-medium bg-stone-900 text-white rounded-lg px-4 py-2 hover:bg-stone-700">Add + generate keypair</button>
