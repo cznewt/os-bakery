@@ -15,41 +15,54 @@
 # leaves both empty and relies on the package's default (inert) pillar.
 #
 # Usage:
-#     ./<node>-init.sh [--test] <node-ip-or-hostname>
+#     ./<node>-init.sh [--test] [--force] <node-ip-or-hostname>
 #
-#   --test, -t   Dry run: salt-call runs with test=True, so it previews the
-#                changes (and the pillar) WITHOUT applying anything.
+#   --test, -t    Dry run: salt-call runs with test=True, so it previews the
+#                 changes (and the pillar) WITHOUT applying anything.
+#   --force, -f   Skip the safety check that the target's hostname matches the
+#                 node this script is for (EXPECT_HOST). Needed e.g. on a fresh
+#                 node whose hostname is still the Batocera default.
+#
+# Before baking, the per-node script refuses to run if the target's hostname is
+# not the node it was generated for (guards against baking the wrong machine);
+# --force overrides. The generic script sets no expectation, so it never blocks.
 #
 # Connects as root, preferring an SSH key from your agent and falling back to
 # the Batocera default password ("linux") — the password path needs sshpass.
 # Optional overrides via env:
 #     MINION_ID=arcade-1 SALT_MASTER=salt.lan ./bake-node.sh 10.0.0.5
-#     SALT_VERSION=3007.14-10 BATOCERA_REPO=https://utils.batocera.gameedu.eu
-#     BATOCERA_ROOT_PASS=linux  TEST=1
+#     SALT_VERSION=3007.14-14 BATOCERA_REPO=https://utils.batocera.gameedu.eu
+#     BATOCERA_ROOT_PASS=linux  EXPECT_HOST=arcade-1  TEST=1  FORCE=1
 #
 set -euo pipefail
 
 NODE=""
 TEST="${TEST:-}"                         # non-empty -> dry run (salt test=True)
+FORCE="${FORCE:-}"                       # non-empty -> skip the hostname check
 for arg in "$@"; do
     case "$arg" in
         --test|-t) TEST=1 ;;
-        -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+        --force|-f) FORCE=1 ;;
+        -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 1 ;;
         *)  NODE="$arg" ;;
     esac
 done
 if [ -z "$NODE" ]; then
-    echo "usage: $0 [--test] <node-ip-or-hostname>" >&2
+    echo "usage: $0 [--test] [--force] <node-ip-or-hostname>" >&2
     exit 1
 fi
 
 # Defaults mirror os-bakery's SALT_PACKAGE_URLS (compose.prod.yaml).
-SALT_VERSION="${SALT_VERSION:-3007.14-10}"
+SALT_VERSION="${SALT_VERSION:-3007.14-14}"
 BATOCERA_REPO="${BATOCERA_REPO:-https://utils.batocera.gameedu.eu}"
 MINION_ID="${MINION_ID:-}"               # empty -> the node's own hostname
 SALT_MASTER="${SALT_MASTER:-}"           # empty -> leave the package default
 ROOT_PASS="${BATOCERA_ROOT_PASS:-linux}" # Batocera default root password
+# Expected target hostname — the per-node script bakes in the node it's for, so
+# we refuse to bake a machine whose hostname differs (unless --force). Empty in
+# the generic script -> no check.
+EXPECT_HOST="${EXPECT_HOST:-}"
 
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 
@@ -63,11 +76,30 @@ REMOTE_CMD="SALT_VERSION=$(printf %q "$SALT_VERSION") \
 BATOCERA_REPO=$(printf %q "$BATOCERA_REPO") \
 MINION_ID=$(printf %q "$MINION_ID") \
 SALT_MASTER=$(printf %q "$SALT_MASTER") \
+EXPECT_HOST=$(printf %q "$EXPECT_HOST") \
+FORCE=$(printf %q "$FORCE") \
 TEST=$(printf %q "$TEST") \
 sh -s"
 
 REMOTE_SCRIPT="$(cat <<'REMOTE'
 set -eu
+
+# Safety: refuse to bake a host whose hostname isn't the node this script is for.
+# EXPECT_HOST is baked into the per-node script (the node's minion id); empty in
+# the generic script. --force (FORCE=1) overrides — needed e.g. on a fresh node
+# still on the Batocera default hostname.
+if [ -n "${EXPECT_HOST:-}" ]; then
+    CUR_HOST="$(hostname)"
+    if [ "$CUR_HOST" != "$EXPECT_HOST" ]; then
+        if [ -n "${FORCE:-}" ]; then
+            echo "== hostname '$CUR_HOST' != expected '$EXPECT_HOST' — continuing (--force) =="
+        else
+            echo "!! hostname mismatch: target is '$CUR_HOST' but this script bakes '$EXPECT_HOST'." >&2
+            echo "!! refusing to bake the wrong machine. Re-run with --force to override." >&2
+            exit 3
+        fi
+    fi
+fi
 
 # Map uname -m to the exact published package (mirrors SALT_PACKAGE_URLS):
 #   x86_64  -> /x64/misc-salt-<ver>-x86_64.pkg.tar.zst
@@ -95,7 +127,7 @@ fi
 
 echo "== install-salt =="
 # Skip the reinstall when misc-salt is already at the desired version (pacman -Q
-# prints "misc-salt <ver>-<rel>"; SALT_VERSION is e.g. 3007.14-10). On a fresh
+# prints "misc-salt <ver>-<rel>"; SALT_VERSION is e.g. 3007.14-14). On a fresh
 # node misc-salt is absent -> cur is empty -> install (its batoexec hook seeds
 # the default pillar + minion conf and starts salt_minion).
 cur="$(pacman -Q misc-salt 2>/dev/null | awk '{print $2}')"

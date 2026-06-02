@@ -2158,9 +2158,13 @@ def node_bake_script(request: HttpRequest, pk: int) -> HttpResponse:
     pillar_filled = ("NEW_PILLAR=\"$(cat <<'OSBAKERY_PILLAR_EOF'\n"
                      + pillar_yaml + "OSBAKERY_PILLAR_EOF\n)\"")
 
+    # Bake in the expected target hostname (the node's minion id / hostname) so
+    # the script refuses to run against the wrong machine unless --force.
     script = (base.read_text()
               .replace('MINION_ID="${MINION_ID:-}"',
                        f'MINION_ID="${{MINION_ID:-{mid}}}"', 1)
+              .replace('EXPECT_HOST="${EXPECT_HOST:-}"',
+                       f'EXPECT_HOST="${{EXPECT_HOST:-{node.minion_id}}}"', 1)
               .replace(pillar_marker, pillar_filled, 1))
 
     resp = HttpResponse(script, content_type="application/x-shellscript")
