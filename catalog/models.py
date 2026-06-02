@@ -379,8 +379,23 @@ class WireguardPeer(TimestampedModel):
     persistent_keepalive = models.PositiveIntegerField(
         default=25, help_text="Seconds; keeps NAT open from behind-NAT devices. 0 = off.",
     )
+    address_pool = models.CharField(
+        max_length=64, blank=True,
+        help_text="Overlay subnet to allocate node tunnel IPs from (CIDR), e.g. "
+                  "10.13.13.0/24 — the node form pre-fills the next free address.",
+    )
     dns = models.JSONField(
         default=list, blank=True, help_text="Optional DNS servers pushed for the tunnel.",
+    )
+    controller = models.ForeignKey(
+        "tenants.Integration",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="wireguard_peers",
+        help_text="Optional wg-easy controller (Integration of type wg_easy). When "
+                  "set, attaching this peer to a node registers the node on the "
+                  "controller (mints its keypair + tunnel IP) instead of generating "
+                  "a key locally — the WireGuard analogue of ZeroTier registration.",
     )
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)

@@ -1220,6 +1220,7 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
     # selecting a ZeroTier network) — its endpoint/public_key/allowed_ips fill in.
     # The per-node tunnel address stays a form field. Free-form fields remain a
     # fallback for ad-hoc peers not in the catalog.
+    registered: dict | None = None
     address = _csv("address")
     peer_slug = (request.POST.get("wireguard_peer") or "").strip()
     if peer_slug:
@@ -1241,6 +1242,23 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
         allowed_ips = list(wgp.allowed_ips or [])
         dns = list(wgp.dns or [])
         keepalive = str(wgp.persistent_keepalive or "")
+        # Controller registration (ZeroTier-style): if the peer has a wg-easy
+        # controller, register this node on it — the controller mints the keypair
+        # + assigns the tunnel IP, so the node boots already-authorized (no manual
+        # [Peer] step). Falls back to local key generation when there's no controller.
+        ctrl = wgp.controller
+        if ctrl and ctrl.is_active and ctrl.type == "wg_easy":
+            from tenants.wireguard import WgRegisterError, register_client
+            try:
+                registered = register_client(
+                    url=ctrl.url, password=ctrl.token, name=node.minion_id,
+                )
+            except WgRegisterError as exc:
+                messages.error(
+                    request, f"wg-easy registration on {ctrl.name} failed: {exc}")
+                return redirect("node_detail", pk=pk)
+            if registered.get("address"):
+                address = [registered["address"]]
     else:
         name = (request.POST.get("interface") or "wg0").strip()
         endpoint = (request.POST.get("endpoint") or "").strip()
@@ -1291,6 +1309,22 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
     node.parameters = params
     node.save(update_fields=["parameters"])
 
+    # Controller minted the keypair: store it (the node is already authorized on
+    # the controller, ZeroTier-style — no manual [Peer] step).
+    if registered and registered.get("private_key"):
+        WireguardIdentity.objects.update_or_create(
+            node=node, interface=name,
+            defaults={"private_key": registered["private_key"],
+                      "public_key": registered.get("public_key", "")},
+        )
+        messages.success(
+            request,
+            f"Registered {node.minion_id} on the wg-easy controller — tunnel "
+            f"{name} at {registered.get('address') or '?'}; keypair minted "
+            "controller-side, no manual authorization needed.",
+        )
+        return redirect("node_detail", pk=pk)
+
     # Generate (or keep) this node's keypair for the interface.
     existing = WireguardIdentity.objects.filter(node=node, interface=name).first()
     if existing and existing.private_key:
@@ -1320,6 +1354,109 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
             "wireguard.interfaces[].private_key in the parameters.",
         )
     return redirect("node_detail", pk=pk)
+
+
+def _render_wireguard_ps1(node, tunnel: str, conf: str) -> str:
+    """Render a Windows PowerShell init script: installs WireGuard for Windows if
+    missing, writes the tunnel config, and (re)activates it as a service."""
+    template = r'''#Requires -RunAsAdministrator
+# os-bakery - WireGuard setup for __NODE__ (minion __MINION__), tunnel "__TUNNEL__".
+# Run in an elevated PowerShell. Installs WireGuard for Windows if missing, writes
+# the tunnel config, then (re)activates it as an auto-start service.
+$ErrorActionPreference = "Stop"
+$Tunnel   = "__TUNNEL__"
+$WgExe    = Join-Path $env:ProgramFiles "WireGuard\wireguard.exe"
+$WgMsiUrl = "https://download.wireguard.com/windows-client/wireguard-amd64-0.5.3.msi"  # bump if it 404s
+$ConfDir  = Join-Path $env:ProgramData "os-bakery\wireguard"
+$ConfPath = Join-Path $ConfDir "$Tunnel.conf"
+
+if (-not (Test-Path $WgExe)) {
+    Write-Host "WireGuard not found - downloading + installing..."
+    $msi = Join-Path $env:TEMP "wireguard-installer.msi"
+    Invoke-WebRequest -Uri $WgMsiUrl -OutFile $msi -UseBasicParsing
+    Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
+}
+if (-not (Test-Path $WgExe)) { throw "WireGuard install failed - install it manually, then re-run." }
+
+New-Item -ItemType Directory -Force -Path $ConfDir | Out-Null
+$conf = @'
+__CONF__
+'@
+Set-Content -Path $ConfPath -Value $conf -Encoding ASCII
+
+# (Re)install the tunnel as an auto-start Windows service.
+& $WgExe /uninstalltunnelservice $Tunnel 2>$null
+Start-Sleep -Seconds 1
+& $WgExe /installtunnelservice $ConfPath
+Write-Host "WireGuard tunnel '$Tunnel' installed and activated."
+'''
+    return (template
+            .replace("__NODE__", node.name)
+            .replace("__MINION__", node.minion_id)
+            .replace("__TUNNEL__", tunnel)
+            .replace("__CONF__", conf.strip()))
+
+
+def node_wireguard_ps1(request: HttpRequest, pk: int) -> HttpResponse:
+    """Per-node Windows PowerShell init script that installs WireGuard (if
+    missing) and brings up the node's tunnel. For controller-backed peers the
+    full config (incl the wg-easy PresharedKey) is fetched live from the
+    controller; otherwise it's built from the node's params + WireguardIdentity.
+    """
+    node = get_object_or_404(Node.objects.select_related("cluster__tenant"), pk=pk)
+    from catalog.models import WireguardPeer
+    from tenants.models import WireguardIdentity
+    from tenants.wireguard import WgRegisterError, get_client_config
+
+    ifaces = _declared_wireguard_interfaces(node)
+    if not ifaces:
+        messages.error(request, f"{node.slug} has no WireGuard tunnel — attach a peer first.")
+        return redirect("node_detail", pk=pk)
+    iface = ifaces[0]
+    name = iface.get("name") or "wg0"
+    peer_pubs = [p.get("public_key") for p in (iface.get("peers") or [])
+                 if isinstance(p, dict) and p.get("public_key")]
+    wgp = WireguardPeer.objects.filter(public_key__in=peer_pubs).first() if peer_pubs else None
+
+    if wgp and wgp.controller_id and wgp.controller.is_active and wgp.controller.type == "wg_easy":
+        try:
+            conf = get_client_config(url=wgp.controller.url, password=wgp.controller.token,
+                                     name=node.minion_id)
+        except WgRegisterError as exc:
+            messages.error(request, f"Could not fetch the tunnel config from the controller: {exc}")
+            return redirect("node_detail", pk=pk)
+    else:
+        ident = WireguardIdentity.objects.filter(node=node, interface=name).first()
+        if not (ident and ident.private_key):
+            messages.error(request, f"No keypair for {name} on {node.slug} — generate it first.")
+            return redirect("node_detail", pk=pk)
+        addr = iface.get("address")
+        addr = ", ".join(addr) if isinstance(addr, list) else (addr or "")
+        dns = iface.get("dns")
+        dns = ", ".join(dns) if isinstance(dns, list) else (dns or "")
+        lines = ["[Interface]", f"PrivateKey = {ident.private_key}"]
+        if addr:
+            lines.append(f"Address = {addr}")
+        if dns:
+            lines.append(f"DNS = {dns}")
+        for p in (iface.get("peers") or []):
+            if not isinstance(p, dict):
+                continue
+            lines += ["", "[Peer]", f"PublicKey = {p.get('public_key', '')}"]
+            aips = p.get("allowed_ips")
+            aips = ", ".join(aips) if isinstance(aips, list) else (aips or "")
+            if aips:
+                lines.append(f"AllowedIPs = {aips}")
+            if p.get("endpoint"):
+                lines.append(f"Endpoint = {p['endpoint']}")
+            if p.get("persistent_keepalive"):
+                lines.append(f"PersistentKeepalive = {p['persistent_keepalive']}")
+        conf = "\n".join(lines)
+
+    resp = HttpResponse(_render_wireguard_ps1(node, name, conf),
+                        content_type="text/plain; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="{node.slug}-wireguard.ps1"'
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -1797,6 +1934,41 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
             wg_rows.append({"interface": name, "address": "", "endpoints": [],
                             "identity": ident, "orphan": True})
 
+    # Suggest a free overlay IP per peer for the attach form: the next address in
+    # the peer's address_pool not already used by any node (reserve .1 = server,
+    # .2 = infra). For controller-backed peers the controller still assigns the
+    # final IP — this is the pre-fill/suggestion.
+    import ipaddress
+    _used_ips: set = set()
+    for n in Node.objects.exclude(parameters={}).only("parameters"):
+        for ifc in (((n.parameters or {}).get("wireguard") or {}).get("interfaces") or []):
+            if not isinstance(ifc, dict):
+                continue
+            a = ifc.get("address")
+            for v in (a if isinstance(a, list) else ([a] if a else [])):
+                try:
+                    _used_ips.add(ipaddress.ip_address(str(v).split("/")[0].strip()))
+                except ValueError:
+                    pass
+
+    def _suggest_addr(pool: str) -> str:
+        if not pool:
+            return ""
+        try:
+            net = ipaddress.ip_network(pool, strict=False)
+        except ValueError:
+            return ""
+        reserved = {net.network_address + 1, net.network_address + 2}
+        for h in net.hosts():
+            if h in reserved or h in _used_ips:
+                continue
+            return f"{h}/{net.prefixlen}"
+        return ""
+
+    wg_peers = list(WireguardPeer.objects.filter(is_active=True).order_by("slug"))
+    for _p in wg_peers:
+        _p.suggested_address = _suggest_addr(_p.address_pool)
+
     return render(request, "node_detail.html", {
         "node": node,
         "image_yaml": image_yaml,
@@ -1810,9 +1982,7 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "zt_networks": zt_networks,
         "zt_member_default": zt_member_default,
         "wg_rows": wg_rows,
-        "wireguard_peers": list(
-            WireguardPeer.objects.filter(is_active=True).order_by("slug")
-        ),
+        "wireguard_peers": wg_peers,
         **_node_form_options(),
     })
 

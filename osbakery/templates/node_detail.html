@@ -252,10 +252,10 @@
                 {% if wireguard_peers %}
                 <div>
                   <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">WireGuard peer <span class="normal-case text-stone-400">(from catalog)</span></label>
-                  <select name="wireguard_peer" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  <select name="wireguard_peer" onchange="var a=this.options[this.selectedIndex].dataset.addr||''; var f=document.getElementById('wg-address'); if(f&&a){f.value=a;}" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
                     <option value="">— select a peer —</option>
                     {% for p in wireguard_peers %}
-                    <option value="{{ p.slug }}">{{ p.slug }} — {{ p.endpoint }}{% if not p.public_key %} (no key yet){% endif %}</option>
+                    <option value="{{ p.slug }}" data-addr="{{ p.suggested_address }}">{{ p.slug }} — {{ p.endpoint }}{% if p.suggested_address %} (free: {{ p.suggested_address }}){% endif %}{% if not p.public_key %} (no key yet){% endif %}</option>
                     {% endfor %}
                   </select>
                   <p class="text-[11px] text-stone-400 mt-1">Endpoint, public key + allowed IPs come from the selected peer (the WG analogue of joining a ZeroTier network). Manage them in the <a href="/admin/catalog/wireguardpeer/" class="underline">WireguardPeer catalog</a>.</p>
@@ -265,7 +265,8 @@
                 {% endif %}
                 <div>
                   <label class="block text-xs uppercase tracking-wider text-stone-500 font-medium mb-1">Address <span class="normal-case text-stone-400">(this node, on the tunnel)</span></label>
-                  <input type="text" name="address" placeholder="10.13.13.5/24" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  <input type="text" name="address" id="wg-address" value="{% if wireguard_peers %}{{ wireguard_peers.0.suggested_address }}{% endif %}" placeholder="10.13.13.5/24" class="w-full border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm">
+                  <p class="text-[11px] text-stone-400 mt-1">Next free IP in the peer's pool, pre-filled. Controller-backed peers may reassign on registration.</p>
                 </div>
                 <details class="border-t border-stone-200 pt-3">
                   <summary class="text-xs uppercase tracking-wider text-stone-500 font-medium cursor-pointer">…or enter an ad-hoc peer manually</summary>
@@ -328,13 +329,16 @@
                 <div class="text-[11px] text-emerald-700 mt-0.5">✓ private key spliced into pillar</div>
                 {% else %}<span class="text-xs text-stone-400">no keypair — generate to preset</span>{% endif %}
               </td>
-              <td class="px-5 py-2 text-right">
-                <form method="post" action="/nodes/{{ node.id }}/wireguard/generate/"{% if r.identity and r.identity.private_key %} onsubmit="return confirm('Regenerate keypair for {{ r.interface }}? The public key changes and must be re-authorized on the server.');"{% endif %}>
-                  {% csrf_token %}
-                  <input type="hidden" name="interface" value="{{ r.interface }}">
-                  {% if r.identity and r.identity.private_key %}<input type="hidden" name="force" value="1">{% endif %}
-                  <button type="submit" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50">{% if r.identity and r.identity.private_key %}Regenerate{% else %}Generate{% endif %}</button>
-                </form>
+              <td class="px-5 py-2">
+                <div class="flex items-center justify-end gap-2">
+                  {% if r.identity and r.identity.private_key %}<a href="/nodes/{{ node.id }}/wireguard/ps1/" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50" title="Windows PowerShell setup: installs WireGuard if missing, writes + activates this tunnel">Windows .ps1</a>{% endif %}
+                  <form method="post" action="/nodes/{{ node.id }}/wireguard/generate/"{% if r.identity and r.identity.private_key %} onsubmit="return confirm('Regenerate keypair for {{ r.interface }}? The public key changes and must be re-authorized on the server.');"{% endif %}>
+                    {% csrf_token %}
+                    <input type="hidden" name="interface" value="{{ r.interface }}">
+                    {% if r.identity and r.identity.private_key %}<input type="hidden" name="force" value="1">{% endif %}
+                    <button type="submit" class="text-xs font-medium border border-stone-300 rounded px-3 py-1 hover:bg-stone-50">{% if r.identity and r.identity.private_key %}Regenerate{% else %}Generate{% endif %}</button>
+                  </form>
+                </div>
               </td>
             </tr>
             {% endfor %}

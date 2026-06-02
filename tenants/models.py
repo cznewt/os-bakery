@@ -369,6 +369,7 @@ class Integration(TimestampedModel):
 
     class Type(models.TextChoices):
         ZEROTIER = "zerotier", _("ZeroTier controller / Central")
+        WG_EASY = "wg_easy", _("wg-easy WireGuard controller")
 
     tenant = models.ForeignKey(
         Tenant,
