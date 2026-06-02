@@ -1502,15 +1502,12 @@ def node_wireguard_android(request: HttpRequest, pk: int) -> HttpResponse:
     conf = conf.strip()
     qr_svg = None
     try:
-        import io
-
         import segno
 
-        buff = io.StringIO()
-        # error="m" keeps the QR scannable for the longish wg-quick payload;
-        # xmldecl off so the <svg> embeds inline in the page.
-        segno.make(conf, error="m").save(buff, kind="svg", scale=4, border=2, xmldecl=False)
-        qr_svg = buff.getvalue()
+        # svg_inline() returns a bare <svg> string (no XML decl / namespace) ready
+        # to embed in the page; error="m" keeps it scannable for the wg-quick
+        # payload. (segno.save(kind="svg") writes bytes, so we use svg_inline.)
+        qr_svg = segno.make(conf, error="m").svg_inline(scale=4, border=2)
     except Exception:
         qr_svg = None
     return render(request, "node_wireguard_android.html", {
