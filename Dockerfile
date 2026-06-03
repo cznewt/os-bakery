@@ -50,8 +50,8 @@ WORKDIR /app
 # Copy the whole source tree before `pip install .` — hatchling's
 # packages = [osbakery, catalog, recipes, builds, infra, tenants] need all
 # top-level dirs present at build time.
-# Exclude the large vendored batocera packages from the shared base — only the
-# worker targets COPY their per-arch slice (see below), so web stays lean.
+# Exclude the gitignored packages/ dir (build-context-only binaries) so the
+# image stays lean.
 COPY --exclude=packages . /app
 
 RUN pip install --upgrade pip \
@@ -145,12 +145,7 @@ RUN install -d /usr/share/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CELERY_CONCURRENCY=2 \
-    CELERY_QUEUES=builds-packer,default \
-    BATOCERA_PACKAGES_DIR=/opt/batocera-packages
-
-# x86_64 batocera packages (salt, alloy) — overlaid into the userdata partition
-# when baking pc-amd64 batocera images.
-COPY packages/batocera/x86_64 /opt/batocera-packages
+    CELERY_QUEUES=builds-packer,default
 
 CMD ["sh", "-c", "celery -A osbakery worker \
         -n worker-packer@%h -l info \
@@ -189,12 +184,7 @@ ENV PACKER_LOG=0 \
     PACKER_PLUGIN_PATH=/usr/bin \
     PACKER_ARM_TOOLS_PRESETS=/opt/packer-arm-tools/configs \
     CELERY_CONCURRENCY=1 \
-    CELERY_QUEUES=builds-packer-arm \
-    BATOCERA_PACKAGES_DIR=/opt/batocera-packages
-
-# aarch64 batocera packages (salt, alloy) — overlaid into the userdata partition
-# when baking ARM batocera images (rpi*, handhelds).
-COPY packages/batocera/aarch64 /opt/batocera-packages
+    CELERY_QUEUES=builds-packer-arm
 
 CMD ["sh", "-c", "celery -A osbakery worker \
         -n worker-packer-arm@%h -l info \

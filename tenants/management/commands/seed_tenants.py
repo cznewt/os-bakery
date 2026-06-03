@@ -69,6 +69,17 @@ _GEDU_BATOCERA_BASE_PACKAGES = [
     {"name": "ports-super-tux-kart"},
 ]
 
+# Virtual roms — slim "join the server" tiles over an installed base package
+# (batocera.virtual_roms formula; see os-bakery docs/virtual-roms.md). Attach to
+# clusters that ship the matching base package (here ports-super-tux-kart). The
+# STK server runs host-networked on bravo, reachable at 10.13.13.2:2759 over the
+# WireGuard mesh; `connect` defaults to --connect-now={server} for SuperTuxKart.
+_GEDU_BATOCERA_VIRTUAL_ROMS = [
+    {"base": "ports-super-tux-kart",
+     "name": "SuperTuxKart Online",
+     "server": "10.13.13.2:2759"},
+]
+
 
 TENANTS: list[dict[str, Any]] = [
     {
@@ -162,6 +173,7 @@ TENANTS: list[dict[str, Any]] = [
                         "ssh_keys": _GEDU_SSH_KEYS,
                         "repositories": _GEDU_BATOCERA_REPOS,
                         "base_packages": _GEDU_BATOCERA_BASE_PACKAGES,
+                        "virtual_roms": _GEDU_BATOCERA_VIRTUAL_ROMS,
                     },
                     "alloy": {
                         "labels": {"cluster": "gedu-prg"},

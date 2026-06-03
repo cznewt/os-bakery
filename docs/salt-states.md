@@ -45,7 +45,7 @@ salt tree** and bakes it into the images. The source is the sibling
 | `macos` | macOS baseline — packages, users, files, directories |
 | `windows` | Windows baseline — packages, directories, files |
 | `raspberrypi` | Raspberry Pi specifics |
-| `batocera` | Batocera — `batocera.conf` settings, SSH keys, Wi-Fi networks, game repositories, packages, directories/files (custom `batocera.setting` state module) |
+| `batocera` | Batocera — `batocera.conf` settings, SSH keys, Wi-Fi networks, game repositories, [virtual roms](virtual-roms.md), packages, directories/files (custom `batocera.setting` state module) |
 
 ### Salt / management
 | Formula | Scope |
