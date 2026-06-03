@@ -25,16 +25,15 @@ class WgRegisterError(RuntimeError):
 
 
 def register_client(*, url: str, password: str, name: str,
+                    username: str = "admin",
                     timeout: int = 20) -> dict[str, str]:
-    """Register (create) a client on a wg-easy v14 controller; return its config.
+    """Register (create) a client on a wg-easy **v15** controller; return its config.
 
-    Logs in (``POST /api/session``), creates the client (``POST
-    /api/wireguard/client`` — wg-easy mints the keypair + assigns the next overlay
-    IP; idempotent by name, reused if it already exists), then fetches the
-    client's wg-quick configuration and parses out the node's private key +
-    tunnel address (the public key comes from the client record). The node thus
-    boots already-authorized on the controller — the WireGuard analogue of
-    :func:`tenants.zerotier.register_member`.
+    wg-easy v15 uses HTTP Basic Auth (admin user + password) and a different API
+    than v14: ``POST /api/client`` ({name, expiresAt}) mints the keypair + assigns
+    the next overlay IP (idempotent by name); ``GET /api/client/{id}/configuration``
+    returns the wg-quick config. The node thus boots already-authorized on the
+    controller — the WireGuard analogue of :func:`tenants.zerotier.register_member`.
 
     Returns ``{private_key, public_key, address, server_public_key, endpoint,
     allowed_ips, client_id}``.
@@ -46,32 +45,33 @@ def register_client(*, url: str, password: str, name: str,
     if not (url and password and name):
         raise WgRegisterError("wg-easy url/password/name required.")
     base = url.rstrip("/")
-    s = requests.Session()
+    auth = (username or "admin", password)
     try:
-        login = s.post(f"{base}/api/session", json={"password": password},
-                       timeout=timeout)
-        if login.status_code not in (200, 204):
-            raise WgRegisterError(f"wg-easy login failed (HTTP {login.status_code}).")
-
         def _clients() -> dict:
-            r = s.get(f"{base}/api/wireguard/client", timeout=timeout)
+            r = requests.get(f"{base}/api/client", auth=auth, timeout=timeout)
+            if r.status_code == 401:
+                raise WgRegisterError(
+                    "wg-easy auth failed (HTTP 401) — check the admin "
+                    "username/password (controller token).")
             r.raise_for_status()
             return {c.get("name"): c for c in r.json()}
 
         clients = _clients()
         if name not in clients:
-            cr = s.post(f"{base}/api/wireguard/client", json={"name": name},
-                        timeout=timeout)
-            if cr.status_code not in (200, 204):
+            cr = requests.post(f"{base}/api/client", auth=auth,
+                               json={"name": name, "expiresAt": None},
+                               timeout=timeout)
+            if cr.status_code not in (200, 201):
                 raise WgRegisterError(
-                    f"wg-easy create client failed (HTTP {cr.status_code}).")
+                    f"wg-easy create client failed (HTTP {cr.status_code}): "
+                    f"{cr.text[:200]}")
             clients = _clients()
         client = clients.get(name)
         if not client:
             raise WgRegisterError(f"wg-easy client '{name}' missing after create.")
         cid = client["id"]
-        conf = s.get(f"{base}/api/wireguard/client/{cid}/configuration",
-                     timeout=timeout).text
+        conf = requests.get(f"{base}/api/client/{cid}/configuration",
+                            auth=auth, timeout=timeout).text
     except requests.RequestException as exc:
         raise WgRegisterError(f"wg-easy API error: {exc}") from exc
 
@@ -85,7 +85,7 @@ def register_client(*, url: str, password: str, name: str,
     return {
         "private_key": priv,
         "public_key": client.get("publicKey", ""),
-        "address": _f(r"^Address\s*=\s*(.+)$"),
+        "address": str(client.get("ipv4Address") or "") or _f(r"^Address\s*=\s*(.+)$"),
         "server_public_key": _f(r"^PublicKey\s*=\s*(.+)$"),
         "endpoint": _f(r"^Endpoint\s*=\s*(.+)$"),
         "allowed_ips": _f(r"^AllowedIPs\s*=\s*(.+)$"),
@@ -94,8 +94,9 @@ def register_client(*, url: str, password: str, name: str,
 
 
 def get_client_config(*, url: str, password: str, name: str,
+                     username: str = "admin",
                      timeout: int = 20) -> str:
-    """Fetch a wg-easy client's full wg-quick config (incl PresharedKey) by name.
+    """Fetch a wg-easy **v15** client's full wg-quick config by name (Basic Auth).
 
     The registration only persists the node's private key, but a working tunnel
     also needs the server-issued PresharedKey — so the Windows/init scripts fetch
@@ -106,19 +107,19 @@ def get_client_config(*, url: str, password: str, name: str,
     if not (url and password and name):
         raise WgRegisterError("wg-easy url/password/name required.")
     base = url.rstrip("/")
-    s = requests.Session()
+    auth = (username or "admin", password)
     try:
-        login = s.post(f"{base}/api/session", json={"password": password},
-                       timeout=timeout)
-        if login.status_code not in (200, 204):
-            raise WgRegisterError(f"wg-easy login failed (HTTP {login.status_code}).")
-        r = s.get(f"{base}/api/wireguard/client", timeout=timeout)
+        r = requests.get(f"{base}/api/client", auth=auth, timeout=timeout)
+        if r.status_code == 401:
+            raise WgRegisterError(
+                "wg-easy auth failed (HTTP 401) — check the admin "
+                "username/password (controller token).")
         r.raise_for_status()
         client = {c.get("name"): c for c in r.json()}.get(name)
         if not client:
             raise WgRegisterError(f"wg-easy has no client named '{name}'.")
-        return s.get(f"{base}/api/wireguard/client/{client['id']}/configuration",
-                     timeout=timeout).text
+        return requests.get(f"{base}/api/client/{client['id']}/configuration",
+                            auth=auth, timeout=timeout).text
     except requests.RequestException as exc:
         raise WgRegisterError(f"wg-easy API error: {exc}") from exc
 
