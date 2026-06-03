@@ -35,8 +35,8 @@ def register_client(*, url: str, password: str, name: str,
     returns the wg-quick config. The node thus boots already-authorized on the
     controller — the WireGuard analogue of :func:`tenants.zerotier.register_member`.
 
-    Returns ``{private_key, public_key, address, server_public_key, endpoint,
-    allowed_ips, client_id}``.
+    Returns ``{private_key, public_key, address, server_public_key,
+    preshared_key, endpoint, allowed_ips, client_id}``.
     """
     import re
 
@@ -87,6 +87,7 @@ def register_client(*, url: str, password: str, name: str,
         "public_key": client.get("publicKey", ""),
         "address": str(client.get("ipv4Address") or "") or _f(r"^Address\s*=\s*(.+)$"),
         "server_public_key": _f(r"^PublicKey\s*=\s*(.+)$"),
+        "preshared_key": _f(r"^PresharedKey\s*=\s*(.+)$"),
         "endpoint": _f(r"^Endpoint\s*=\s*(.+)$"),
         "allowed_ips": _f(r"^AllowedIPs\s*=\s*(.+)$"),
         "client_id": cid,

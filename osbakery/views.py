@@ -1229,6 +1229,7 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
     # fallback for ad-hoc peers not in the catalog.
     registered: dict | None = None
     address = _csv("address")
+    preshared_key = ""  # set when a wg-easy controller registers this node
     peer_slug = (request.POST.get("wireguard_peer") or "").strip()
     if peer_slug:
         from catalog.models import WireguardPeer
@@ -1266,6 +1267,13 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
                 return redirect("node_detail", pk=pk)
             if registered.get("address"):
                 address = [registered["address"]]
+            # The controller config is authoritative for the SERVER identity:
+            # prefer its public key over the catalog peer's recorded one (which
+            # can go stale) and capture the per-client PresharedKey wg-easy v15
+            # issues. The selected peer/endpoint (LAN vs public) is kept.
+            if registered.get("server_public_key"):
+                peer_public_key = registered["server_public_key"]
+            preshared_key = registered.get("preshared_key") or ""
     else:
         name = (request.POST.get("interface") or "wg0").strip()
         endpoint = (request.POST.get("endpoint") or "").strip()
@@ -1282,6 +1290,8 @@ def node_wireguard_add(request: HttpRequest, pk: int) -> HttpResponse:
             return redirect("node_detail", pk=pk)
 
     peer: dict = {"public_key": peer_public_key, "endpoint": endpoint}
+    if preshared_key:
+        peer["preshared_key"] = preshared_key
     if allowed_ips:
         peer["allowed_ips"] = allowed_ips
     if keepalive:

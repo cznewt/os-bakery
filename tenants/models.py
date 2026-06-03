@@ -197,6 +197,44 @@ def splice_zerotier_identities(model: dict, node) -> dict:
     return new_model
 
 
+def _wg_address_with_prefix(address, peers):
+    """Widen a bare tunnel IP to the prefix of the peer subnet that contains it.
+
+    wg-easy hands back a bare host IP (e.g. ``10.13.13.6``), which ``wg-quick``
+    brings up as a ``/32`` — and a ``/32`` interface has no broadcast address, so
+    subnet broadcasts never leave the tunnel. LAN-discovery games (SuperTuxKart,
+    …) then can't see servers reachable over the VPN. Re-using the overlay subnet
+    the node belongs to (the peer ``allowed_ips`` network that contains the IP,
+    e.g. ``/24``) restores the broadcast address; unicast routing is unchanged.
+
+    A default route (``0.0.0.0/0`` / ``::/0``) is ignored and an address that
+    already carries a prefix is left untouched, so this is a no-op unless the IP
+    is bare *and* a non-default peer subnet covers it.
+    """
+    import ipaddress
+
+    def fix(addr):
+        if not isinstance(addr, str) or "/" in addr:
+            return addr
+        try:
+            host = ipaddress.ip_address(addr)
+        except ValueError:
+            return addr
+        for peer in peers:
+            if not isinstance(peer, dict):
+                continue
+            for cidr in (peer.get("allowed_ips") or []):
+                try:
+                    net = ipaddress.ip_network(cidr, strict=False)
+                except ValueError:
+                    continue
+                if net.prefixlen and host.version == net.version and host in net:
+                    return f"{addr}/{net.prefixlen}"
+        return addr
+
+    return [fix(a) for a in address] if isinstance(address, list) else fix(address)
+
+
 def splice_wireguard_identities(model: dict, node) -> dict:
     """Splice a node's prepopulated WireGuard keys into the pillar.
 
@@ -237,6 +275,8 @@ def splice_wireguard_identities(model: dict, node) -> dict:
         ident = by_iface.get(e.get("name"))
         if ident and ident.private_key and not e.get("private_key"):
             e["private_key"] = ident.private_key
+        if e.get("address"):
+            e["address"] = _wg_address_with_prefix(e["address"], e.get("peers") or [])
         out.append(e)
 
     new_wg = dict(wg)
