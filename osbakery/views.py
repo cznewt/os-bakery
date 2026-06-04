@@ -2032,6 +2032,17 @@ def node_detail(request: HttpRequest, pk: int) -> HttpResponse:
         except ValueError:
             return ""
         reserved = {net.network_address + 1, net.network_address + 2}
+        # Allocate monotonically: hand out (highest lease in this pool) + 1, not
+        # the first gap. First-gap re-hands-out addresses leased directly in
+        # wg-easy that os-bakery can't see (e.g. a Windows client at .7), causing
+        # collisions; always climbing keeps wg-easy + os-bakery in lock-step as
+        # long as new clients are minted here (controller path).
+        in_pool = sorted(ip for ip in _used_ips if ip in net)
+        if in_pool:
+            nxt = in_pool[-1] + 1
+            if nxt in net and nxt not in reserved and nxt not in _used_ips:
+                return f"{nxt}/{net.prefixlen}"
+        # Fresh pool, or the climb landed on a reserved/used slot -> first free.
         for h in net.hosts():
             if h in reserved or h in _used_ips:
                 continue
