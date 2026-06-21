@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from tenants.pillar import pillar_json
+
 from .views import (
     baked_images,
     bake_index,
@@ -82,6 +84,10 @@ urlpatterns = [
     path("bake/<slug:slug>/", bake_recipe, name="bake_recipe"),
     path("docs/", docs_index, name="docs_index"),
     path("docs/<slug:slug>/", doc_page, name="doc_page"),
+    # Salt external pillar (salt.pillar.http_json): the master GETs
+    # /pillar/<minion_id> — no trailing slash, so the master's `.../pillar/%s`
+    # url hits it directly without an APPEND_SLASH redirect.
+    path("pillar/<str:minion_id>", pillar_json, name="pillar_json"),
     path("admin/", admin.site.urls),
     path("api/catalog/", include("catalog.urls")),
     path("api/recipes/", include("recipes.urls")),

@@ -230,6 +230,14 @@ PACKER_ARM_TOOLS_IMAGE = env(
 SALT_MASTER_URL = env("SALT_MASTER_URL", default="")
 SALT_MINION_VERSION = env("SALT_MINION_VERSION", default="3007")
 
+# HTTP pillar endpoint (/pillar/<minion_id>) consumed by a Salt master via
+# salt.pillar.http_json. The pillar carries secrets (WireGuard/ZeroTier keys,
+# repo creds), so set SALT_PILLAR_PASSWORD in any non-dev deployment — the
+# endpoint then requires these HTTP Basic credentials. Left empty, the endpoint
+# is open, matching the dev-insecure defaults of the local compose stack.
+SALT_PILLAR_USERNAME = env("SALT_PILLAR_USERNAME", default="salt")
+SALT_PILLAR_PASSWORD = env("SALT_PILLAR_PASSWORD", default="")
+
 # Bake-time salt bootstrap: the batocera provisioner installs misc-salt directly
 # from a package URL (``pacman -U``) so salt-call exists, then runs the salt
 # states (which configure the private repos + install the rest). Keyed by the
