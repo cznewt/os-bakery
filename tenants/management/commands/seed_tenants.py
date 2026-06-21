@@ -176,14 +176,14 @@ TENANTS: list[dict[str, Any]] = [
                         "virtual_roms": _GEDU_BATOCERA_VIRTUAL_ROMS,
                     },
                     "alloy": {
-                        "labels": {"cluster": "gedu-prg"},
+                        "labels": {"cluster": "gedu-roam"},
                         "metrics_destination": {
-                            "url": "http://10.50.61.11:19090/api/v1/metrics/write",
-                            "tenant": "newt",
+                            "url": "http://mimir.geekedu.eu:9009/api/v1/push",
+                            "tenant": "gedu",
                         },
                         "logs_destination": {
-                            "url": "http://10.50.61.11:13001/loki/api/v1/push",
-                            "tenant": "newt",
+                            "url": "http://loki.geekedu.eu:3100/loki/api/v1/push",
+                            "tenant": "gedu",
                         },
                     },
                 },
