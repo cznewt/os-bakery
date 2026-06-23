@@ -389,6 +389,14 @@ class Node(TimestampedModel):
         # parameters (merged above) wins, so it is not clobbered here.
         if not (isinstance(model.get("salt"), dict) and model["salt"].get("id")):
             model = _deep_merge(model, {"salt": {"id": self.minion_id}})
+        # Per-node alloy `instance` label = the minion id (mirrors the bake-time
+        # builds.orchestrator._build_effective_model). The cluster pillar carries
+        # only the shared `alloy.labels.cluster`; `instance` identifies the
+        # individual device so its metrics/logs stay attributable. An explicit
+        # instance label in cluster/node params still wins.
+        if isinstance(model.get("alloy"), dict) \
+                and not (model["alloy"].get("labels") or {}).get("instance"):
+            model = _deep_merge(model, {"alloy": {"labels": {"instance": self.minion_id}}})
         model = _deep_merge(model, {"osbakery": {
             "node": f"{self.cluster.tenant.slug}/{self.cluster.slug}/{self.slug}",
             "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
