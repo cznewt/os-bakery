@@ -87,26 +87,14 @@ TENANTS: list[dict[str, Any]] = [
         "name": "GeekEdu",
         "description": "GeekEdu — educational labs and infrastructure tenant.",
         "clusters": [
-            # ---- VPN meshes ----------------------------------------
+            # ---- Datacenter + roaming ----------------------------------------
             {
                 "slug": "gedu-vpn",
-                "name": "GeekEdu PRG infrastructure mesh",
-                "notes": "ZeroTier infra mesh for Prague datacenter — "
-                         "`a57fdfffb0c77a31 craftama-infrastructure`. "
+                "name": "GeekEdu PRG infrastructure",
+                "notes": "Prague datacenter infrastructure — salt master + DNS. "
                          "Synced from deploy-gedu-prg in "
                          "gedu-sites-model/.../gedu-prg-infra-salt.yml.",
                 "parameters": {
-                    "vpn": {
-                        "kind": "zerotier",
-                        "network_id": "a57fdfffb0c77a31",
-                        "network_name": "craftama-infrastructure",
-                    },
-                    "zerotier": {
-                        "networks": [
-                            {"id": "a57fdfffb0c77a31",
-                             "name": "craftama-infrastructure"},
-                        ],
-                    },
                     "salt": {"master": {"host": "10.50.61.17"}},
                     "linux": {"domain": "prg.gedu"},
                     "dns": {"search_domains": ["prg.gedu", "gedu.lab"]},
@@ -114,23 +102,10 @@ TENANTS: list[dict[str, Any]] = [
             },
             {
                 "slug": "gedu-roam",
-                "name": "GeekEdu roaming mesh",
-                "notes": "ZeroTier mesh for laptops + handhelds — "
-                         "`a57fdfffb03ef7e9 nxlabs-geekedu`. "
+                "name": "GeekEdu roaming",
+                "notes": "Roaming laptops + handhelds. "
                          "Synced from deploy-gedu-roam.",
-                "parameters": {
-                    "vpn": {
-                        "kind": "zerotier",
-                        "network_id": "a57fdfffb03ef7e9",
-                        "network_name": "nxlabs-geekedu",
-                    },
-                    "zerotier": {
-                        "networks": [
-                            {"id": "a57fdfffb03ef7e9",
-                             "name": "nxlabs-geekedu"},
-                        ],
-                    },
-                },
+                "parameters": {},
             },
             # ---- Kubernetes datacenter ------------------------------
             {

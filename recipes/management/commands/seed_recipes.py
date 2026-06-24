@@ -712,7 +712,7 @@ RECIPES: list[dict[str, Any]] = [
     {
         "slug": "ubuntu-kube",
         "name": "Ubuntu · Kubernetes node",
-        "summary": "Ubuntu Server with kubeadm + cri-o + zerotier; ready to "
+        "summary": "Ubuntu Server with kubeadm + cri-o; ready to "
                    "join an existing control plane.",
         "os_slug": "ubuntu",
         "hardware_slugs": ["pc-amd64", "rpi4", "rpi5", "pc-arm64",

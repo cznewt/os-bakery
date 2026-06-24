@@ -27,7 +27,6 @@ CLUSTERS = [
         "batocera": {"boot_to_arcade": True,
                      "share_host": "nas.test.lan",
                      "screen_share": {"enabled": True}},
-        "zerotier": {"network": "8056c2e21c000001"},
     }, ["test", "retro"]),
     ("test-kube", "Test Kubernetes", {
         "salt": {"master": {"host": "salt.test.lan"}},
@@ -46,9 +45,7 @@ CLUSTERS = [
         "network": {"wifi_country": "CZ"},
         "linux": {"timezone": "Europe/Prague"},
     }, ["test", "iot"]),
-    ("test-vpn", "Test VPN Mesh", {
-        "vpn": {"kind": "zerotier"},
-        "zerotier": {"network": "8056c2e21c000001"},
+    ("test-vpn", "Test Net (DNS)", {
         "dns": {"search": "test.lan", "servers": ["10.0.0.1"]},
     }, ["test", "net"]),
     ("test-esp", "Test ESPHome Network", {
