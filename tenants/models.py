@@ -359,6 +359,13 @@ class Node(TimestampedModel):
 
     @property
     def minion_id(self) -> str:
+        """The device's **host identity** — its OS hostname (and the WireGuard /
+        wg-easy client name), falling back to the slug when no hostname is set.
+
+        NB this is *not* the salt minion id: that is always the slug (see
+        ``effective_model``, which keys ``salt.id`` / ``options.minion_id`` off the
+        slug). Only WireGuard registration and ``options.hostname`` use this.
+        """
         return self.hostname or self.slug
 
     @property
@@ -380,23 +387,28 @@ class Node(TimestampedModel):
         }})
         model = _deep_merge(model, self.cluster.parameters or {})
         model = _deep_merge(model, self.parameters or {})
+        # `options.hostname` is the device's OS hostname (short host name, or the
+        # slug when no hostname is set); `options.minion_id` is the SALT minion id,
+        # which is always the slug (see salt.id below).
         model = _deep_merge(model, {"options": {
-            "hostname": self.minion_id, "minion_id": self.minion_id,
+            "hostname": self.minion_id, "minion_id": self.slug,
         }})
-        # Salt minion id — default to the node's minion id so the gedu salt
-        # formula's "minion" default is overridden and the fleet can match this
-        # node by its minion-id glob. An explicit salt.id in cluster/node
-        # parameters (merged above) wins, so it is not clobbered here.
+        # Salt minion id = the node slug (full, unique, stable). The gedu salt
+        # formula defaults pillar.salt.id to "minion", so without this every device
+        # bakes with the same id and the fleet's node-name-glob role matching
+        # breaks; and the master keys each gameedu-* node's live http_json
+        # ext_pillar on grains.id, which must equal the slug. The hostname is the
+        # device's OS / WireGuard name, *not* its salt id. An explicit salt.id in
+        # cluster/node parameters (merged above) wins, so it is not clobbered here.
         if not (isinstance(model.get("salt"), dict) and model["salt"].get("id")):
-            model = _deep_merge(model, {"salt": {"id": self.minion_id}})
-        # Per-node alloy `instance` label = the minion id (mirrors the bake-time
-        # builds.orchestrator._build_effective_model). The cluster pillar carries
-        # only the shared `alloy.labels.cluster`; `instance` identifies the
-        # individual device so its metrics/logs stay attributable. An explicit
+            model = _deep_merge(model, {"salt": {"id": self.slug}})
+        # Per-node alloy `instance` label = the salt minion id (= the slug), so a
+        # device's metrics/logs stay attributable and match the id it reports. The
+        # cluster pillar carries only the shared `alloy.labels.cluster`. An explicit
         # instance label in cluster/node params still wins.
         if isinstance(model.get("alloy"), dict) \
                 and not (model["alloy"].get("labels") or {}).get("instance"):
-            model = _deep_merge(model, {"alloy": {"labels": {"instance": self.minion_id}}})
+            model = _deep_merge(model, {"alloy": {"labels": {"instance": self.slug}}})
         model = _deep_merge(model, {"osbakery": {
             "node": f"{self.cluster.tenant.slug}/{self.cluster.slug}/{self.slug}",
             "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
