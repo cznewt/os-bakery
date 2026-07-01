@@ -1,9 +1,8 @@
 """Tests for tenants.models.Node.effective_model identity keys.
 
-Locks in the convention: the **salt minion id is the node slug** (full), while the
-**hostname is the device's OS / WireGuard name** (short). Regression guard for the
-patch that moved salt.id / options.minion_id / alloy.instance off ``minion_id``
-(``hostname or slug``) onto ``slug``.
+Locks in the convention: ``salt.id`` / ``options.minion_id`` are the node **slug**
+(full), while the **hostname** — the device's OS / WireGuard name — *and* the alloy
+``instance`` label are the **short host name** (``minion_id`` = hostname-or-slug).
 """
 
 from __future__ import annotations
@@ -46,12 +45,13 @@ def windows_node(db):
 def test_salt_id_and_minion_id_default_to_slug(windows_node):
     model = windows_node.effective_model
     slug = "gameedu-roam-kubik-windows-laptop"
-    # Salt minion id + the salt-id-tracking labels are the full slug…
+    # Salt minion id + options.minion_id are the full slug…
     assert model["salt"]["id"] == slug
     assert model["options"]["minion_id"] == slug
-    assert model["alloy"]["labels"]["instance"] == slug
-    # …while the OS hostname / WireGuard client name stays the short hostname.
+    # …while the OS hostname / WireGuard client name AND the alloy instance label
+    # stay the short hostname (a concise, readable per-device series id).
     assert model["options"]["hostname"] == "kubik-windows"
+    assert model["alloy"]["labels"]["instance"] == "kubik-windows"
     assert windows_node.minion_id == "kubik-windows"
 
 

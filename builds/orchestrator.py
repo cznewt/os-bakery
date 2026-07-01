@@ -236,16 +236,18 @@ def _build_effective_model(build: BuildRequest) -> dict:
                else _opts.get("minion_id") or _opts.get("hostname") or build.label)
     if salt_id and not (isinstance(model.get("salt"), dict) and model["salt"].get("id")):
         model = _deep_merge(model, {"salt": {"id": salt_id}})
-    # Per-node alloy `instance` label = the salt minion id. The cluster pillar
-    # can only carry a shared `alloy.labels.cluster`; `instance` must identify
-    # the individual device so its metrics/logs stay attributable (distinct
-    # scrape targets per node). The batocera alloy formula emits one
-    # alloy.labels.<k> per pillar.alloy.labels entry, so injecting it here is
-    # all it needs — no per-cluster value, no formula change. Only when the
-    # cluster opted into alloy; an explicit instance label still wins.
-    if salt_id and isinstance(model.get("alloy"), dict) \
+    # Per-node alloy `instance` label = the device's short host identity (the
+    # node's hostname/minion_id, or the salt_id fallback for node-less builds) —
+    # a concise, readable series label, NOT the verbose slug. The cluster pillar
+    # can only carry a shared `alloy.labels.cluster`; `instance` identifies the
+    # individual device so its metrics/logs stay attributable. The batocera alloy
+    # formula emits one alloy.labels.<k> per pillar.alloy.labels entry, so
+    # injecting it here is all it needs. Only when the cluster opted into alloy;
+    # an explicit instance label still wins.
+    alloy_instance = build.node.minion_id if build.node_id is not None else salt_id
+    if alloy_instance and isinstance(model.get("alloy"), dict) \
             and not (model["alloy"].get("labels") or {}).get("instance"):
-        model = _deep_merge(model, {"alloy": {"labels": {"instance": salt_id}}})
+        model = _deep_merge(model, {"alloy": {"labels": {"instance": alloy_instance}}})
     model = _deep_merge(model, {
         "osbakery": {
             "build_id": str(build.id),

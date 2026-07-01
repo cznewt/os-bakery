@@ -402,13 +402,14 @@ class Node(TimestampedModel):
         # cluster/node parameters (merged above) wins, so it is not clobbered here.
         if not (isinstance(model.get("salt"), dict) and model["salt"].get("id")):
             model = _deep_merge(model, {"salt": {"id": self.slug}})
-        # Per-node alloy `instance` label = the salt minion id (= the slug), so a
-        # device's metrics/logs stay attributable and match the id it reports. The
-        # cluster pillar carries only the shared `alloy.labels.cluster`. An explicit
-        # instance label in cluster/node params still wins.
+        # Per-node alloy `instance` label = the device's short host identity
+        # (`minion_id` = hostname, or slug when unset) — a concise, readable series
+        # label (e.g. `arcade-alpha`), NOT the verbose salt id/slug. The cluster
+        # pillar carries only the shared `alloy.labels.cluster`. An explicit instance
+        # label in cluster/node params still wins.
         if isinstance(model.get("alloy"), dict) \
                 and not (model["alloy"].get("labels") or {}).get("instance"):
-            model = _deep_merge(model, {"alloy": {"labels": {"instance": self.slug}}})
+            model = _deep_merge(model, {"alloy": {"labels": {"instance": self.minion_id}}})
         model = _deep_merge(model, {"osbakery": {
             "node": f"{self.cluster.tenant.slug}/{self.cluster.slug}/{self.slug}",
             "cluster": f"{self.cluster.tenant.slug}/{self.cluster.slug}",
