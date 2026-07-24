@@ -116,8 +116,8 @@ TENANTS: list[dict[str, Any]] = [
                 "parameters": {
                     "kubernetes": {
                         "api": {
-                            "host": "10.70.0.111",
-                            "advertise": {"address": "10.70.0.111"},
+                            "host": "10.13.13.1",
+                            "advertise": {"address": "10.13.13.1"},
                         },
                         "version": "1.34.4",
                         "network": {"kind": "flannel"},
