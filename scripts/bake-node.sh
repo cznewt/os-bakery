@@ -31,7 +31,7 @@
 # the Batocera default password ("linux") — the password path needs sshpass.
 # Optional overrides via env:
 #     MINION_ID=arcade-1 SALT_MASTER=salt.lan ./bake-node.sh 10.0.0.5
-#     SALT_VERSION=3007.14-15 BATOCERA_REPO=https://utils.batocera.gameedu.eu
+#     SALT_VERSION=3008.2-1 BATOCERA_REPO=https://utils.batocera.gameedu.eu
 #     BATOCERA_ROOT_PASS=linux  EXPECT_HOST=arcade-1  TEST=1  FORCE=1
 #
 set -euo pipefail
@@ -54,7 +54,7 @@ if [ -z "$NODE" ]; then
 fi
 
 # Defaults mirror os-bakery's SALT_PACKAGE_URLS (compose.prod.yaml).
-SALT_VERSION="${SALT_VERSION:-3007.14-15}"
+SALT_VERSION="${SALT_VERSION:-3008.2-1}"
 BATOCERA_REPO="${BATOCERA_REPO:-https://utils.batocera.gameedu.eu}"
 MINION_ID="${MINION_ID:-}"               # empty -> the node's own hostname
 SALT_MASTER="${SALT_MASTER:-}"           # empty -> leave the package default
