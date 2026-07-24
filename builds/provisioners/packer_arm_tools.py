@@ -122,7 +122,7 @@ def build_image_variables(build, *, with_salt: bool) -> dict[str, Any]:
         variables["WPA_COUNTRY"] = opts.get("wifi_country", "DE")
 
     if with_salt:
-        variables["SALT_VERSION"] = getattr(settings, "SALT_MINION_VERSION", "3007")
+        variables["SALT_VERSION"] = getattr(settings, "SALT_MINION_VERSION", "3008.2")
         variables["SALT_MASTER"] = getattr(settings, "SALT_MASTER_URL", "")
         variables["SALT_MINION"] = opts.get("minion_id") or (build.label or f"osbakery-{build.id}")
         # Caller is responsible for pre-issuing the keypair; orchestrator does

@@ -65,6 +65,7 @@ def _salt_payload_b64(ctx: "BuildContext") -> str:
 
 def _user_data(ctx: "BuildContext") -> str:
     payload = _salt_payload_b64(ctx)
+    salt_version = getattr(settings, "SALT_MINION_VERSION", "3008.2")
     return f"""#cloud-config
 # os-bakery: deploy salt masterless on first boot.
 write_files:
@@ -74,7 +75,7 @@ write_files:
       {payload}
 runcmd:
   - [sh, -c, "curl -fsSL -o /tmp/bootstrap-salt.sh {_SALT_BOOTSTRAP} || wget -qO /tmp/bootstrap-salt.sh {_SALT_BOOTSTRAP}"]
-  - [sh, -c, "sh /tmp/bootstrap-salt.sh -X || true"]
+  - [sh, -c, "sh /tmp/bootstrap-salt.sh -X stable {salt_version} || true"]
   - [sh, -c, "base64 -d /opt/osbakery/salt-payload.b64 | tar -xzf - -C /"]
   - [sh, -c, "salt-call --local --state-output=mixed state.highstate >>/var/log/osbakery-salt.log 2>&1 || true"]
 """

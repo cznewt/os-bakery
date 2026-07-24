@@ -228,7 +228,10 @@ PACKER_ARM_TOOLS_IMAGE = env(
 )
 
 SALT_MASTER_URL = env("SALT_MASTER_URL", default="")
-SALT_MINION_VERSION = env("SALT_MINION_VERSION", default="3007")
+# Fleet-standard salt version: baked minions install exactly this (cloud-init
+# bootstrap pin + packer-arm-tools SALT_VERSION). Keep in step with what the
+# fleet runs; the batocera path versions independently via SALT_PACKAGE_URLS.
+SALT_MINION_VERSION = env("SALT_MINION_VERSION", default="3008.2")
 
 # HTTP pillar endpoint (/pillar/<minion_id>) consumed by a Salt master via
 # salt.pillar.http_json. The pillar carries secrets (WireGuard/ZeroTier keys,
