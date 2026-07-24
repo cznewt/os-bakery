@@ -103,6 +103,45 @@ The endpoints (Django, **CSRF-protected, no login**):
 (`curl -c jar -b jar` on every call) and the `csrfmiddlewaretoken` from *that*
 response. Rotating the jar between GET and POST → HTTP 403.
 
+**Edit gotcha:** a scripted `POST /nodes/<pk>/edit/` must re-send **every** form
+field *including* `is_active=on` — it's a checkbox, so omitting it silently
+deactivates the node and `/pillar/<minion_id>` starts returning `{}`
+(`resolve_node` filters `is_active=True`). The WG `private_key` is NOT in
+`parameters_yaml` (it lives on the WireguardIdentity row, spliced at render), so
+round-tripping the textarea is safe.
+
+## Linux laptop (Ubuntu) — enrol it to salt after the WG add
+
+Proven flow (kocourek 2026-07-23; node #38 = the template for the next one):
+
+1. **Add `linux.hostname: <short-hostname>` to the node params at create time.**
+   The `linux` formula defaults the hostname to literal `node` — the first
+   highstate renames the box and Alloy then ships `instance="node"` until fixed.
+2. On the device (over LAN ssh): install `wireguard-tools`, drop
+   `/nodes/<pk>/wireguard/conf/` into `/etc/wireguard/wg0.conf` (bump
+   `PersistentKeepalive = 25`), `systemctl enable --now wg-quick@wg0`, ping
+   10.13.13.1.
+3. Salt repo (Ubuntu 25.10+/26.04): save the Broadcom key as **`.asc`** (apt 3.x
+   rejects armored keys named `.pgp`) and point `salt.sources` `Signed-By` at it;
+   install the fleet-standard version **3008.2** (= `SALT_MINION_VERSION` in
+   os-bakery settings), pinning **both** `salt-minion=3008.2 salt-common=3008.2`.
+   (The `salt` formula runs `pkg.latest`, so repo-stable drift self-corrects;
+   master 3007.13 + minion 3008.2 is the proven fleet pairing.)
+4. Minion config BEFORE install: `/etc/salt/minion.d/99-gedu.conf` with
+   `master: 10.13.13.1` + `id: <full slug>`. Accept on the master:
+   `kubectl -n infra-salt exec deploy/salt-master -c salt-master -- salt-key -y -a <slug>`.
+5. Highstate = `linux, salt, alloy, batocera` (top glob `*-linux-laptop`;
+   `batocera` is a pillar-guarded no-op until the node gets game blocks). The
+   `salt` state SIGTERMs the minion mid-run — run it as **`salt-call
+   state.highstate`** over ssh, not from the master, or the return is lost.
+6. **If the hostname changed since alloy was installed:** `systemctl restart
+   alloy` (the `instance` label = `constants.hostname`, evaluated at process
+   start — since cznewt/alloy-resources `efcab18` the unix/process modules
+   export the relabel output, so the stale `Environment=HOSTNAME=%H` unit env
+   no longer leaks into metrics).
+   Verify: `count({instance="<hostname>"})` on mimir 10.13.13.9:9009, tenant
+   `gedu`, and a Loki stream on :3100.
+
 ## Model reference (code)
 
 - `tenants/models.py` — `Node` (cluster⊕preset⊕hardware_target⊕params →
