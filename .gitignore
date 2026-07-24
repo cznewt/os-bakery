@@ -20,6 +20,7 @@ staticfiles/
 storage/artifacts/
 storage/work/
 storage/cache/
+storage/backups/
 *.img
 *.img.xz
 *.img.gz
