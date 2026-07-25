@@ -581,7 +581,7 @@ _UBUNTU_CLOUD_AMD = "https://cloud-images.ubuntu.com/releases/{release}/release/
 # good per LTS here.
 _UBUNTU_DESKTOP_AMD = {
     "22.04": "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso",
-    "24.04": "https://releases.ubuntu.com/24.04/ubuntu-24.04.1-desktop-amd64.iso",
+    "24.04": "https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso",
     "26.04": "https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso",
 }
 
